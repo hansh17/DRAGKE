@@ -1,0 +1,29 @@
+# how to test this program?
+
+1. install NCURSES library (apt-get install libncurses-dev)
+2. add three users (adduser user1; adduser user2; adduser user3)
+3. Make this! (sudo make) 
+4. start dbserver from some other terminal (./dbserver)
+5. start three instances of dvonion (from user1, user2, user3's terminal)
+6. initialize each user's environment.
+   see below appendix I
+7. send/recv message (e.g., /sendmsg user3 hello!)
+8. stop program (/quit)
+
+
+# appendix I
+
+user1's shell...
+$ gpg --import user1.priv
+$ gpg --import user1.pub
+
+user2's shell...
+$ gpg --import user2.priv
+$ gpg --import user2.pub
+
+user3's shell...
+$ gpg --import user3.priv
+$ gpg --import user3.pub
+
+# And..
+See DEMO.png

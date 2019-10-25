@@ -1,0 +1,23 @@
+# keyID info (gpg --list-key)
+
+
+pub   2048R/613B1F0C 2018-03-27
+uid                  user1 (My name is user1.) <user1@kaist.ac.kr>
+sub   2048R/A3E4CFC3 2018-03-27
+
+pub   2048R/6EE63A1F 2018-03-27
+uid                  user2 (My name is user2.) <user2@kaist.ac.kr>
+sub   2048R/2A328DBA 2018-03-27
+
+pub   2048R/80767962 2018-03-27
+uid                  user3 (My name is user3) <user3@kaist.ac.kr>
+sub   2048R/08AF1383 2018-03-27
+
+pub   2048R/88D68033 2018-04-01
+uid                  user4 (My name is user4.) <user4@kaist.ac.kr>
+sub   2048R/C4187733 2018-04-01
+
+pub   2048R/D8753054 2018-04-01
+uid                  user5 (My name is user5.) <user5@kaist.ac.kr>
+sub   2048R/7766E033 2018-04-01
+
