@@ -22,19 +22,21 @@ CCFLAGS=-O3 -Wall -Wextra -std=c99 -Wno-deprecated-declarations -D$(PRNG) $(PRNG
 LDFLAGS=$(PRNG_LDFLAGS)
 
 all:
-	$(CC) $(CCFLAGS) -Wno-unused-function -c fft.c
-	$(CC) $(CCFLAGS) -Wno-unused-function -c rlwe.c
-	$(CC) $(CCFLAGS) -Wno-unused-function -c rlwe_kex.c
-	$(CC) $(CCFLAGS) -Wno-unused-function -Wno-unused-parameter -c rlwe_rand.c
-	$(CC) $(CCFLAGS) -o rlwe_main rlwe_main.c fft.o rlwe.o rlwe_kex.o rlwe_rand.o $(LDFLAGS)
-	$(CC) $(CCFLAGS) -o rlwe_benchmark rlwe_benchmark.c fft.o rlwe.o rlwe_kex.o rlwe_rand.o $(LDFLAGS)
-	$(CC) $(CCFLAGS) -Wno-unused-function -o rlwe_test rlwe_test.c fft.o rlwe_kex.o rlwe_rand.o $(LDFLAGS)
+	$(CC) $(CCFLAGS) -Wno-unused-function -c ../fft.c
+	$(CC) $(CCFLAGS) -Wno-unused-function -c ../rlwe.c
+	#$(CC) $(CCFLAGS) -Wno-unused-function -c rlwe_kex.c
+	$(CC) $(CCFLAGS) -Wno-unused-function -Wno-unused-parameter -c ../rlwe_rand.c
+	#$(CC) $(CCFLAGS) -o rlwe_main rlwe_main.c fft.o rlwe.o rlwe_kex.o rlwe_rand.o $(LDFLAGS)
+	#$(CC) $(CCFLAGS) -o rlwe_benchmark rlwe_benchmark.c fft.o rlwe.o rlwe_kex.o rlwe_rand.o $(LDFLAGS)
+	#$(CC) $(CCFLAGS) -Wno-unused-function -o rlwe_test rlwe_test.c fft.o rlwe_kex.o rlwe_rand.o $(LDFLAGS)
+
+	$(CC) $(CCFLAGS) -o test test.c fft.o rlwe.o rlwe_rand.o $(LDFLAGS)
 
 clean:
-	rm fft.o rlwe.o rlwe_kex.o rlwe_rand.o rlwe_main rlwe_benchmark rlwe_test
+	rm fft.o rlwe.o rlwe_rand.o test
 
 test:
-	./rlwe_test
+	./test
 
 prettyprint:
 	astyle --style=java --indent=tab --pad-header --pad-oper --align-pointer=name --align-reference=name --suffix=none *.c *.h

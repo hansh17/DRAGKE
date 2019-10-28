@@ -1,8 +1,9 @@
 #include <stdio.h>
+#include <stdlib.h>
 
-#include "fft.h"
-#include "rlwe.h"
-#include "rlwe_rand.h"
+#include "../fft.h"
+#include "../rlwe.h"
+#include "../rlwe_rand.h"
 
 void print_poly(uint32_t p[1024], int len)
 {
@@ -16,7 +17,7 @@ void print_poly(uint32_t p[1024], int len)
     printf("\n");
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
     uint32_t a[1024];
     uint32_t b[1024];
@@ -43,12 +44,16 @@ int main(void)
     rlwe_sample(b, &rand_ctx);
 #endif
 
-    print_poly(a, 10);
-    print_poly(b, 10);
+    int print_len = 10;
+    if (argc >= 2)
+        print_len = atoi(argv[1]);
+
+    print_poly(a, print_len);
+    print_poly(b, print_len);
 
     uint32_t result[1024];
     FFT_add(result, a, b);
-    print_poly(result, 10);
+    print_poly(result, print_len);
 
     RAND_CHOICE_cleanup(&rand_ctx);
     return 0;
