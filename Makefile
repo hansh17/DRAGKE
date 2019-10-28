@@ -7,7 +7,7 @@ CC=gcc
 # RLWE_RANDOMNESS_USE_OPENSSL_RAND
 # RLWE_RANDOMNESS_USE_DEV_URANDOM
 # RLWE_RANDOMNESS_USE_INSECURE_LIBC
-PRNG=RLWE_RANDOMNESS_USE_OPENSSL_AES
+PRNG=RLWE_RANDOMNESS_USE_OPENSSL_RAND
 PRNG_CCFLAGS=
 # LDFLAGS needs to have -lcrypto if you are using an OpenSSL-based PRNG
 PRNG_LDFLAGS=-lcrypto
@@ -30,8 +30,10 @@ all:
 	$(CC) $(CCFLAGS) -o rlwe_benchmark rlwe_benchmark.c fft.o rlwe.o rlwe_kex.o rlwe_rand.o $(LDFLAGS)
 	$(CC) $(CCFLAGS) -Wno-unused-function -o rlwe_test rlwe_test.c fft.o rlwe_kex.o rlwe_rand.o $(LDFLAGS)
 
+	$(CC) $(CCFLAGS) -o test test.c fft.o rlwe.o rlwe_rand.o $(LDFLAGS)
+
 clean:
-	rm fft.o rlwe.o rlwe_kex.o rlwe_rand.o rlwe_main rlwe_benchmark rlwe_test
+	rm fft.o rlwe.o rlwe_kex.o rlwe_rand.o rlwe_main rlwe_benchmark rlwe_test test
 
 test:
 	./rlwe_test
