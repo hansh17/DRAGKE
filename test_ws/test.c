@@ -12,7 +12,7 @@ void print_poly(uint32_t p[1024], int len)
 
     for (int i = 0; i < len; i++)
     {
-        printf("%d ", p[i]);
+        printf("%15u", p[i]);
     }
     printf("\n");
 }
