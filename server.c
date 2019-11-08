@@ -15,10 +15,15 @@
 #define MAX_PEER 10
 #define POLY_LEN 1024
 
+bool check_pub_keys_prime[MAX_PEER];
+
 uint32_t pub_keys[MAX_PEER][POLY_LEN];
 uint32_t pub_keys_prime[MAX_PEER][POLY_LEN];
 
+uint32_t reconcile[POLY_LEN];
+
 void poly_init(int num_peer);
+void calculate_reconcile(void);
 void run_server(int num_peer, int server_port);
 
 void poly_init(int num_peer)
@@ -40,6 +45,18 @@ void poly_init(int num_peer)
 #endif
         RAND_CHOICE_cleanup(&rand_ctx);
     }
+}
+
+void calculate_reconcile(void)
+{
+    RAND_CTX rand_ctx;
+    RAND_CHOICE_init(&rand_ctx);
+#if CONSTANT_TIME
+    rlwe_sample_ct(reconcile, &rand_ctx);
+#else
+    rlwe_sample(reconcile, &rand_ctx);
+#endif
+    RAND_CHOICE_cleanup(&rand_ctx);
 }
 
 void run_server(int num_peer, int server_port)
@@ -76,6 +93,10 @@ void run_server(int num_peer, int server_port)
     
     uint32_t result[POLY_LEN];
     int option_and_peer;
+
+    memset(check_pub_keys_prime, false, sizeof(check_pub_keys_prime));
+    bool reconcile_calculated = false;
+    
     while (true)
     {
         client_addr_size = sizeof(client_addr);
@@ -93,13 +114,39 @@ void run_server(int num_peer, int server_port)
             continue;
         }
 
+        if (!reconcile_calculated)
+        {
+            bool all_pub_keys_prime = true;
+
+            for (int i = 0; i < num_peer; i++)
+            {
+                if (!check_pub_keys_prime[i])
+                {
+                    all_pub_keys_prime = false;
+                    break;
+                }
+            }
+
+            if (all_pub_keys_prime)
+            {
+                calculate_reconcile();
+                reconcile_calculated = true;
+            }
+        }
+
         switch (option_and_peer & 0xffff)
         {
+            case 0:
+            {
+                recv(client_socket, pub_keys[peer], POLY_LEN * sizeof(uint32_t), 0);
+                break;
+            }
             case 1:
             {
                 send(client_socket, pub_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
                 recv(client_socket, result, sizeof(result), 0);
                 memcpy(pub_keys_prime[peer], result, sizeof(pub_keys_prime[peer]));
+                check_pub_keys_prime[peer] = true;
                 printf("got new public key fine!!!\n");
                 break;
             }
@@ -108,17 +155,30 @@ void run_server(int num_peer, int server_port)
                 send(client_socket, pub_keys_prime, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
                 break;
             }
+            case 3:
+            {
+                send(client_socket, reconcile, sizeof(reconcile), 0);
+                printf("Reconcile       ");
+                for (int i = 0; i < 3; i++)
+                {
+                    printf("%15u", reconcile[i]);
+                }
+                printf("\n\n");
+                break;
+            }
         }
         for (int i = 0; i < num_peer; i++)
         {
-            for (int j = 0; j < 10; j++)
+            printf("Pub key       %d", i);
+            for (int j = 0; j < 3; j++)
                 printf("%15u", pub_keys[i][j]);
             printf("\n");
         }
         printf("\n");
         for (int i = 0; i < num_peer; i++)
         {
-            for (int j = 0; j < 10; j++)
+            printf("Pub key prime %d", i);
+            for (int j = 0; j < 3; j++)
                 printf("%15u", pub_keys_prime[i][j]);
             printf("\n");
         }
@@ -129,8 +189,8 @@ void run_server(int num_peer, int server_port)
 
 int main(int argc, char *argv[])
 {
-    int num_peer = 5;
-    poly_init(num_peer);
+    int num_peer = 3;
+    //poly_init(num_peer);
 
     int server_port = 4000;
     char op;

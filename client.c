@@ -18,7 +18,28 @@
 uint32_t pub_keys[MAX_PEER][POLY_LEN];
 uint32_t pub_keys_prime[MAX_PEER][POLY_LEN];
 
+uint32_t reconcile[POLY_LEN];
+
+void poly_init(int peer);
 void calculate_pub_key_prime(uint32_t result[POLY_LEN], int peer, int num_peer);
+
+void poly_init(int peer)
+{
+    if (peer < 0 || peer > MAX_PEER)
+    {
+        printf("peer range error!\n");
+        return;
+    }
+
+    RAND_CTX rand_ctx;
+    RAND_CHOICE_init(&rand_ctx);
+#if CONSTANT_TIME
+    rlwe_sample_ct(pub_keys[peer], &rand_ctx);
+#else
+    rlwe_sample(pub_keys[peer], &rand_ctx);
+#endif
+    RAND_CHOICE_cleanup(&rand_ctx);
+}
 
 void calculate_pub_key_prime(uint32_t result[POLY_LEN], int peer, int num_peer)
 {
@@ -66,11 +87,13 @@ int main(int argc, char *argv[])
                 break;
         }
     }
-    if (!(0 <= option && option <= 2))
+    if (!(0 <= option && option <= 3))
     {
         printf("option shoud be 0 <= option <= 2!\n");
         exit(1);
     }
+
+    poly_init(peer);
 
     int option_and_peer = (peer << 16) | option;
 
@@ -89,6 +112,11 @@ int main(int argc, char *argv[])
     
     switch (option)
     {
+        case 0:
+        {
+            send(client_socket, pub_keys[peer], sizeof(pub_keys[peer]), 0);
+            break;
+        }
         case 1:
         {
             int recv_size = recv(client_socket, pub_keys, sizeof(pub_keys), 0);
@@ -107,11 +135,22 @@ int main(int argc, char *argv[])
 
             for (int i = 0; i < num_peer; i++)
             {
-                for (int j = 0; j < 10; j++)
+                for (int j = 0; j < 3; j++)
                     printf("%15u", pub_keys_prime[i][j]);
                 printf("\n");
             }
 
+            break;
+        }
+        case 3:
+        {
+            recv(client_socket, reconcile, sizeof(reconcile), 0);
+            printf("Reconcile       ");
+            for (int i = 0; i < 3; i++)
+            {
+                printf("%15u", reconcile[i]);
+            }
+            printf("\n");
             break;
         }
         default:
