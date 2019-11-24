@@ -12,6 +12,7 @@
 #include "../fft.h"
 #include "../rlwe_rand.h"
 #include "../rlwe_a.h"
+#include "../rlwe_kex.h"
 
 #define _CRT_SECURE_NO_WARNINGS
 #define MAX_PEER 10
@@ -19,8 +20,9 @@
 
 uint32_t pub_keys[MAX_PEER][POLY_LEN];
 uint32_t augmented_pub_keys[MAX_PEER][POLY_LEN];
+uint32_t Y[MAX_PEER][POLY_LEN];
 
-int calculate_pubkey(int peer, const uint32_t *a, uint32_t s[1024], uint32_t pub_keys, FFT_CTX *ctx) {
+int calculate_pubkey(int peer, const uint32_t *a, uint32_t s[1024], FFT_CTX *ctx) {
 	if (peer < 0 || peer > MAX_PEER){
         printf("peer range error!\n");
         return -1;
@@ -40,13 +42,19 @@ int calculate_pubkey(int peer, const uint32_t *a, uint32_t s[1024], uint32_t pub
 	rlwe_sample(s, &rand_ctx);
 	rlwe_sample(e, &rand_ctx);
 #endif
-	rlwe_key_gen(pub_keys[peer], a, s, e, ctx); // pub_keys[peer]=as+e
+	
+	uint32_t tmp[1024];
+	rlwe_key_gen(tmp, a, s, e, ctx); // tmp에 as+e 저장
+	for(int t=0; t<1024; t++){
+		pub_keys[peer][t]=tmp[t];
+	}
 	rlwe_memset_volatile(e, 0, 1024 * sizeof(uint32_t));
+	rlwe_memset_volatile(tmp, 0, 1024 * sizeof(uint32_t));
 	RAND_CHOICE_cleanup(&rand_ctx);
 	return ret;
 }
 
-int calculate_augmented_pubkey(uint32_t result[1024], uint32_t s[1024], int peer, int num_peer, FFT_CTX *ctx){ // need to be modified
+int calculate_augmented_pubkey(int peer, int num_peer, uint32_t s[1024],  FFT_CTX *ctx){ 
 	int ret;
 	uint32_t e[1024];
 	RAND_CTX rand_ctx;
@@ -55,7 +63,7 @@ int calculate_augmented_pubkey(uint32_t result[1024], uint32_t s[1024], int peer
 		return ret;
 	}
 
-	memset(result, 0, sizeof(uint32_t) * 1024);
+	uint32_t result[1024];
 		
 	if (peer==num_peer-1){	// peer N-1
 #if CONSTANT_TIME
@@ -89,13 +97,19 @@ int calculate_augmented_pubkey(uint32_t result[1024], uint32_t s[1024], int peer
 		FFT_mul(result, result, s, ctx); // res= res* s_i
 		FFT_add(result, result, e); // res= res+e
 	}
+	
+	for(int t=0; t<1024; t++){
+		augmented_pub_keys[peer][t]=result[t];
+	}
+	
+	rlwe_memset_volatile(result, 0, 1024 * sizeof(uint32_t));
 	rlwe_memset_volatile(e, 0, 1024 * sizeof(uint32_t));
 	RAND_CHOICE_cleanup(&rand_ctx);
 	return ret;
 }
 
 
-int calculate_reconcile(uint32_t result[1024], uint32_t s[1024], uint64_t rec[16], uint64_t k[16], int num_peer, FFT_CTX *ctx){
+int calculate_reconcile(uint32_t s[1024], uint64_t rec[16], uint64_t k[16], int num_peer, FFT_CTX *ctx){
 	int ret;
 	uint32_t e[1024];
 	RAND_CTX rand_ctx;
@@ -104,17 +118,16 @@ int calculate_reconcile(uint32_t result[1024], uint32_t s[1024], uint64_t rec[16
 		return ret;
 	}
 
-	memset(result, 0, sizeof(uint32_t) * 1024);		
+	uint32_t result[1024];	
 #if CONSTANT_TIME
 	rlwe_sample_ct(e, &rand_ctx);
 #else
 	rlwe_sample(e, &rand_ctx);
 #endif	
 	
-	uint32_t Y[MAX_PEER][POLY_LEN];
+	
 	uint32_t tmp[1024];
-	memset(tmp, 0, sizeof(uint32_t) * 1024);	
-		
+
 	FFT_mul(tmp, pub_keys[num_peer-2], s, ctx); // tmp=z_n-2 * s_n-1 
 	FFT_add(tmp, augmented_pub_keys[num_peer-1], tmp); // tmp=X_n-1+tmp
 	FFT_add(Y[num_peer-1], tmp, e); // +error
@@ -139,6 +152,7 @@ int calculate_reconcile(uint32_t result[1024], uint32_t s[1024], uint64_t rec[16
 #endif	
 	// SHA-3 hash_session_key(uint32_t sk[1024], uint32_t result[1024])
 	
+	rlwe_memset_volatile(result, 0, 1024 * sizeof(uint32_t));
 	rlwe_memset_volatile(e, 0, 1024 * sizeof(uint32_t));
 	RAND_CHOICE_cleanup(&rand_ctx);
 	return ret;
@@ -218,9 +232,8 @@ int main(){
 	uint32_t s_bob[1024];
 	uint32_t s_eve[1024];
 	
-	uint32_t res[1024];
-	uint32_t res1[1024];
-	uint32_t res2[1024];
+	//uint32_t res[1024];
+	//uint32_t res1[1024];
 
 	uint64_t rec[16];
 	uint64_t k_alice[16];
@@ -234,37 +247,30 @@ int main(){
 	}
 	
 	
-	calculate_pubkey(0, a, s_alice, pub_keys, &ctx); // segmentation fault
-	//calculate_pubkey(1, a, s_bob, pub_keys, &ctx);
-	//calculate_pubkey(2, a, s_eve, pub_keys, &ctx);
+	calculate_pubkey(0, a, s_alice, &ctx); 
+	calculate_pubkey(1, a, s_bob, &ctx);
+	calculate_pubkey(2, a, s_eve, &ctx);
 	
 	for(int t=0; t<10; t++){
-		printf("alice+%d\n", pub_keys[0][t]);
-		//printf("bob+%d\n", pub_keys[1][t]);
-		//printf("eve_%d\n", pub_keys[2][t]);
+		printf("alice%d: %d\n", t,pub_keys[0][t]);
 	}
 	
+	
+	rlwe_kex_compute_key_bob(pub_keys[1], s_eve, rec, k_eve, &ctx);
+	rlwe_kex_compute_key_alice(pub_keys[2], s_bob, rec, k_bob, &ctx);
 	/*
-	calculate_augmented_pubkey(res,s_alice, 0, 3, &ctx);
-	*augmented_pub_keys[0]=*res;
-	calculate_augmented_pubkey(res1,s_bob, 1, 3, &ctx);
-	*augmented_pub_keys[1]=*res1;
-	calculate_augmented_pubkey(res2,s_eve, 2, 3, &ctx);
-	*augmented_pub_keys[2]=*res2;
+	calculate_augmented_pubkey(0,3, s_alice, &ctx);
+	calculate_augmented_pubkey(1,3, s_bob, &ctx);
+	calculate_augmented_pubkey(2,3, s_eve, &ctx);
 	
+	calculate_reconcile(s_eve, rec, k_eve, 3, &ctx);
 	
-	uint32_t res3[1024];
-	uint32_t res4[1024];
-	uint32_t res5[1024];
-	
-	calculate_reconcile(res3,s_eve, rec, k_eve, 3, &ctx);
-	
-	calculate_session_key(res4,s_alice, rec, k_alice, 0, 3, &ctx);
-	calculate_session_key(res5,s_bob, rec, k_bob, 1, 3, &ctx);
-
+	calculate_session_key(res,s_alice, rec, k_alice, 0, 3, &ctx);
+	calculate_session_key(res1,s_bob, rec, k_bob, 1, 3, &ctx);
+*/
 	int keys_match = 1;
 	for (int i = 0; i < 16; i++) {
-		keys_match &= (k_alice[i] == k_bob[i]);
+		//keys_match &= (k_alice[i] == k_bob[i]);
 		keys_match &= (k_eve[i] == k_bob[i]);
 	}
 	if (keys_match) {
@@ -274,10 +280,10 @@ int main(){
 		FFT_CTX_free(&ctx);
 		return -1;
 	}
-*/
-	rlwe_memset_volatile(res, 0, 1024 * sizeof(uint32_t));
-	rlwe_memset_volatile(res1, 0, 1024 * sizeof(uint32_t));
-	rlwe_memset_volatile(res2, 0, 1024 * sizeof(uint32_t));
+
+	//rlwe_memset_volatile(res, 0, 1024 * sizeof(uint32_t));
+	//rlwe_memset_volatile(res1, 0, 1024 * sizeof(uint32_t));
+
 	FFT_CTX_clear(&ctx);
 	FFT_CTX_free(&ctx);
 	
