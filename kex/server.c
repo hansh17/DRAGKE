@@ -127,57 +127,81 @@ int calculate_augmented_pubkey(int peer, int num_peer, uint32_t s[1024],  FFT_CT
 	return ret;
 }
 
-int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_CTX *ctx){
-		
-	uint32_t Y[MAX_PEER][POLY_LEN];
-	uint32_t tmp[1024];
-	uint32_t tmp2[1024]; 
-	
-	for(int t=0; t<1024; t++){
-		tmp[t]=pub_keys[(peer+num_peer-1)%num_peer][t]; // tmp=z[peer-1]
-		tmp2[t]=augmented_pub_keys[peer][t]; // tmp2=X[peer]
-	}	
-	
-	FFT_mul(tmp, tmp, s, ctx); // tmp=z_i-1*s_i 
-	FFT_add(tmp, tmp2, tmp); // tmp=X_i+tmp
-
-	for(int t=0; t<1024; t++){
-		Y[peer][t]=tmp[t]; // Y[i] 저장 (tmp)
-		tmp2[t]=augmented_pub_keys[(peer+1)%num_peer][t]; // tmp2=X[peer+1]
+int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_CTX *ctx){
+	int ret;
+	uint32_t e[1024];
+	RAND_CTX rand_ctx;
+	ret = RAND_CHOICE_init(&rand_ctx);
+	if (!ret) {
+		return ret;
 	}
 	
-	for (int j=1; j<num_peer; j++){
-		FFT_add(tmp, tmp, tmp2); // Y[i]=Y[i-1]+X[i]
-		for(int t=0; t<1024; t++){
-			Y[(peer+j)%num_peer][t]=tmp[t]; // Y[peer+j] 저장 (tmp)
-			tmp2[t]=augmented_pub_keys[(peer+j+1)%num_peer][t]; // tmp2=X[peer+j+1]
+	uint32_t result[1024]={0,};	
+#if CONSTANT_TIME
+	rlwe_sample_ct(e, &rand_ctx);
+#else
+	rlwe_sample(e, &rand_ctx);
+#endif	
+	
+	uint32_t Y[MAX_PEER][POLY_LEN];
+	uint32_t tmp[1024];
+	uint32_t tmp2[1024];
+	
+	for(int t=0; t<1024; t++){
+		tmp[t]=pub_keys[num_peer-2][t]; // tmp=z_N-2
+		tmp2[t]=augmented_pub_keys[num_peer-1][t]; // tmp=X_N-1
+	}
+
+	FFT_mul(tmp, tmp, s, ctx); // tmp=z_n-2 * s_n-1
+	FFT_add(tmp, tmp, tmp2); // tmp=tmp+X_N-1
+	FFT_add(tmp, tmp, e); // tmp=tmp+error
+	
+	for(int k=0; k<1024; k++){
+		Y[num_peer-1][k]=tmp[k]; // Y[N-1]=tmp 값
+		tmp2[k]=augmented_pub_keys[0][k]; // tmp2=X_0
+	}
+	
+	FFT_add(tmp, tmp, tmp2); // calculate Y[0]
+	for(int k=0; k<1024; k++){
+		Y[0][k]=tmp[k];
+		tmp2[k]=augmented_pub_keys[1][k]; // tmp2=X_1
+	}
+	
+	
+	for (int j=1; j<num_peer-1; j++){
+		FFT_add(tmp, tmp, tmp2); // calculate Y[j-1] + X[j]
+		for(int k=0; k<1024; k++){
+			Y[j][k]=tmp[k]; // Y[j]=tmp
+			tmp2[k]=augmented_pub_keys[j+1][k]; // tmp2=X_j+1
 		}
 	}
 	
-	uint32_t result[1024]={0,};
     for (int i = 0; i < num_peer; i++) // calculate b
     {
 		for(int k=0; k<1024; k++){
 			tmp[k]=Y[i][k]; // tmp=Y[i]
 		}
-        FFT_add(result, result, tmp);
+        FFT_add(result, result, tmp); 
     }
 
-
-#if CONSTANT_TIME
-	rlwe_rec_ct(k, result, rec);
+#if CONSTANT_TIME // reconcile message b -> rec, k_n-1 is calculated
+	rlwe_crossround2_ct(rec, result, &rand_ctx);
+	rlwe_round2_ct(k, result);
 #else
-	rlwe_rec(k, result, rec);
-#endif
-
+	rlwe_crossround2(rec, result, &rand_ctx);
+	rlwe_round2(k, result);
+#endif	
 	// SHA-3 hash_session_key(uint32_t sk[1024], uint32_t result[1024])
-
+	
 	rlwe_memset_volatile(result, 0, 1024 * sizeof(uint32_t));
+	rlwe_memset_volatile(e, 0, 1024 * sizeof(uint32_t));
 	rlwe_memset_volatile(Y, 0, 1024 * 10 * sizeof(uint32_t));
 	rlwe_memset_volatile(tmp, 0, 1024 * sizeof(uint32_t));
 	rlwe_memset_volatile(tmp2, 0, 1024 * sizeof(uint32_t));
-	return 1;
+	RAND_CHOICE_cleanup(&rand_ctx);
+	return ret;
 }
+
 
 /*
 void hash_session_key(uint32_t k[1024], uint32_t s[1024]){
@@ -194,5 +218,3 @@ void hash_session_key(uint32_t k[1024], uint32_t s[1024]){
 		handleErrors();}
 	EVP_MD_CTX_free(mdctx);
 }*/
-
-	

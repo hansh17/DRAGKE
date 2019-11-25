@@ -53,7 +53,7 @@ int calculate_pubkey(int peer, const uint32_t *a, uint32_t s[1024], FFT_CTX *ctx
 	return ret;
 }
 
-int calculate_augmented_pubkey(int peer, uint32_t s[1024],  FFT_CTX *ctx){ 
+int calculate_augmented_pubkey(int peer, int num_peer, uint32_t s[1024],  FFT_CTX *ctx){ 
 	int ret;
 	uint32_t e[1024];
 	RAND_CTX rand_ctx;
@@ -66,15 +66,15 @@ int calculate_augmented_pubkey(int peer, uint32_t s[1024],  FFT_CTX *ctx){
 	uint32_t tmp1[1024];
 	uint32_t tmp2[1024];
 	
-	if (peer==2){	// peer N-1
+	if (peer==num_peer-1){	// peer N-1
 #if CONSTANT_TIME
 		rlwe_sample_ct(e, &rand_ctx);
 #else
 		rlwe_sample(e, &rand_ctx);		
 #endif	
 		for(int t=0; t<1024; t++){
-			tmp1[t]=pub_keys[0][t]; // tmp1=z[0];
-			tmp2[t]=pub_keys[1][t]; // tmp2=z[1];
+			tmp1[t]=pub_keys[0][t]; // tmp1=pub_keys[0];
+			tmp2[t]=pub_keys[peer-1][t]; // tmp2=pub_keys[peer-1];
 		}
 
 		FFT_sub(result, tmp1, tmp2); // z[0]-z[1]
@@ -89,8 +89,8 @@ int calculate_augmented_pubkey(int peer, uint32_t s[1024],  FFT_CTX *ctx){
 		rlwe_sample(e, &rand_ctx); // sample from sigma2
 #endif	
 		for(int t=0; t<1024; t++){
-			tmp1[t]=pub_keys[1][t]; // tmp1=z[1];
-			tmp2[t]=pub_keys[2][t]; // tmp2=z[2];
+			tmp1[t]=pub_keys[peer+1][t]; // peer=0인 경우 pub_keys[1]
+			tmp2[t]=pub_keys[num_peer-1][t]; // pub_keys[N-1]
 		}
 		
 		FFT_sub(result, tmp1, tmp2); // z[1]-z[2]
@@ -106,9 +106,9 @@ int calculate_augmented_pubkey(int peer, uint32_t s[1024],  FFT_CTX *ctx){
 #endif	
 
 		for(int t=0; t<1024; t++){
-			tmp1[t]=pub_keys[2][t];
-			tmp2[t]=pub_keys[0][t];
-		}	
+			tmp1[t]=pub_keys[peer+1][t];
+			tmp2[t]=pub_keys[peer-1][t];
+		}		
 		
 		FFT_sub(result, tmp1, tmp2); // res=z[2] - z[0]
 		FFT_mul(result, result, s, ctx); // res= res* s_bob
@@ -127,8 +127,7 @@ int calculate_augmented_pubkey(int peer, uint32_t s[1024],  FFT_CTX *ctx){
 	return ret;
 }
 
-
-int calculate_reconcile(uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_CTX *ctx){
+int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_CTX *ctx){
 	int ret;
 	uint32_t e[1024];
 	RAND_CTX rand_ctx;
@@ -149,17 +148,17 @@ int calculate_reconcile(uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_
 	uint32_t tmp2[1024];
 	
 	for(int t=0; t<1024; t++){
-		tmp[t]=pub_keys[1][t]; // tmp=z[1]
-		tmp2[t]=augmented_pub_keys[2][t]; // tmp=X[2]
+		tmp[t]=pub_keys[num_peer-2][t]; // tmp=z_N-2
+		tmp2[t]=augmented_pub_keys[num_peer-1][t]; // tmp=X_N-1
 	}
 
-	FFT_mul(tmp, tmp, s, ctx); // tmp=z[1] * s_eve
-	FFT_add(tmp, tmp, tmp2); // tmp=tmp+[2]
+	FFT_mul(tmp, tmp, s, ctx); // tmp=z_n-2 * s_n-1
+	FFT_add(tmp, tmp, tmp2); // tmp=tmp+X_N-1
 	FFT_add(tmp, tmp, e); // tmp=tmp+error
 	
 	for(int k=0; k<1024; k++){
-		Y[2][k]=tmp[k]; // Y[N-1]=tmp 값
-		tmp2[k]=augmented_pub_keys[0][k]; // tmp2=X[0]
+		Y[num_peer-1][k]=tmp[k]; // Y[N-1]=tmp 값
+		tmp2[k]=augmented_pub_keys[0][k]; // tmp2=X_0
 	}
 	
 	FFT_add(tmp, tmp, tmp2); // calculate Y[0]
@@ -169,12 +168,15 @@ int calculate_reconcile(uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_
 	}
 	
 	
-	FFT_add(tmp, tmp, tmp2); // calculate Y[1]
-	for(int k=0; k<1024; k++){
-		Y[1][k]=tmp[k];
+	for (int j=1; j<num_peer-1; j++){
+		FFT_add(tmp, tmp, tmp2); // calculate Y[j-1] + X[j]
+		for(int k=0; k<1024; k++){
+			Y[j][k]=tmp[k]; // Y[j]=tmp
+			tmp2[k]=augmented_pub_keys[j+1][k]; // tmp2=X_j+1
+		}
 	}
 	
-    for (int i = 0; i < 3; i++) // calculate b
+    for (int i = 0; i < num_peer; i++) // calculate b
     {
 		for(int k=0; k<1024; k++){
 			tmp[k]=Y[i][k]; // tmp=Y[i]
@@ -200,40 +202,35 @@ int calculate_reconcile(uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_
 	return ret;
 }
 
-// alice (0) 세션 키 계산
-int calculate_session_key_alice(uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_CTX *ctx){
+int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_CTX *ctx){
 		
 	uint32_t Y[MAX_PEER][POLY_LEN];
 	uint32_t tmp[1024];
 	uint32_t tmp2[1024]; 
 	
+	for(int t=0; t<1024; t++){
+		tmp[t]=pub_keys[(peer+num_peer-1)%num_peer][t]; // tmp=z[peer-1]
+		tmp2[t]=augmented_pub_keys[peer][t]; // tmp2=X[peer]
+	}	
+	
+	FFT_mul(tmp, tmp, s, ctx); // tmp=z_i-1*s_i 
+	FFT_add(tmp, tmp2, tmp); // tmp=X_i+tmp
 
 	for(int t=0; t<1024; t++){
-		tmp[t]=pub_keys[2][t]; // tmp=z[2]
-		tmp2[t]=augmented_pub_keys[0][t]; // tmp2=X[0]
+		Y[peer][t]=tmp[t]; // Y[i] 저장 (tmp)
+		tmp2[t]=augmented_pub_keys[(peer+1)%num_peer][t]; // tmp2=X[peer+1]
 	}
 	
-	FFT_mul(tmp, tmp, s, ctx); // tmp=z[2]*s_alice
-	FFT_add(tmp, tmp2, tmp); // tmp=X[0]+tmp
-	
-	for(int t=0; t<1024; t++){
-		Y[0][t]=tmp[t]; // Y[0] 저장 (tmp)
-		tmp2[t]=augmented_pub_keys[1][t]; // tmp2=X[1]
-	}
-	
-	FFT_add(tmp, tmp, tmp2); // Y[0]+X[1]
-	for(int t=0; t<1024; t++){
-		Y[1][t]=tmp[t]; // Y[1] 저장 (tmp)
-		tmp2[t]=augmented_pub_keys[2][t]; // tmp2=X[2]
-	}
-
-	FFT_add(tmp, tmp, tmp2); // Y[1]+X[2]
-	for(int t=0; t<1024; t++){
-		Y[2][t]=tmp[t]; // Y[1] 저장 (tmp)
+	for (int j=1; j<num_peer; j++){
+		FFT_add(tmp, tmp, tmp2); // Y[i]=Y[i-1]+X[i]
+		for(int t=0; t<1024; t++){
+			Y[(peer+j)%num_peer][t]=tmp[t]; // Y[peer+j] 저장 (tmp)
+			tmp2[t]=augmented_pub_keys[(peer+j+1)%num_peer][t]; // tmp2=X[peer+j+1]
+		}
 	}
 	
 	uint32_t result[1024]={0,};
-    for (int i = 0; i < 3; i++) // calculate b
+    for (int i = 0; i < num_peer; i++) // calculate b
     {
 		for(int k=0; k<1024; k++){
 			tmp[k]=Y[i][k]; // tmp=Y[i]
@@ -257,61 +254,21 @@ int calculate_session_key_alice(uint32_t s[1024], uint64_t rec[16], uint64_t k[1
 	return 1;
 }
 
-// bob (1) 세션 키 계산
-int calculate_session_key_bob(uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_CTX *ctx){
-		
-	uint32_t Y[MAX_PEER][POLY_LEN];
-	uint32_t tmp[1024];
-	uint32_t tmp2[1024]; 
-	
-
-	for(int t=0; t<1024; t++){
-		tmp[t]=pub_keys[0][t]; // tmp=z[0]
-		tmp2[t]=augmented_pub_keys[1][t]; // tmp2=X[1]
-	}
-	
-	FFT_mul(tmp, tmp, s, ctx); // tmp=z[0]*s_bob
-	FFT_add(tmp, tmp2, tmp); // tmp=X[1]+tmp
-	
-	for(int t=0; t<1024; t++){
-		Y[1][t]=tmp[t]; // Y[1] 저장 (tmp)
-		tmp2[t]=augmented_pub_keys[2][t]; // tmp2=X[2]
-	}
-	
-	FFT_add(tmp, tmp, tmp2); // Y[1]+X[2]
-	for(int t=0; t<1024; t++){
-		Y[2][t]=tmp[t]; // Y[2] 저장 (tmp)
-		tmp2[t]=augmented_pub_keys[0][t]; // tmp2=X[0]
-	}
-
-	FFT_add(tmp, tmp, tmp2); // Y[2]+X[0]
-	for(int t=0; t<1024; t++){
-		Y[0][t]=tmp[t]; // Y[1] 저장 (tmp)
-	}
-	
-	uint32_t result[1024]={0,};
-    for (int i = 0; i < 3; i++) // calculate b
-    {
-		for(int k=0; k<1024; k++){
-			tmp[k]=Y[i][k]; // tmp=Y[i]
-		}
-        FFT_add(result, result, tmp);
-    }
-
-
-#if CONSTANT_TIME
-	rlwe_rec_ct(k, result, rec);
-#else
-	rlwe_rec(k, result, rec);
-#endif
-
-	rlwe_memset_volatile(result, 0, 1024 * sizeof(uint32_t));
-	rlwe_memset_volatile(Y, 0, 1024 * 10 * sizeof(uint32_t));
-	rlwe_memset_volatile(tmp, 0, 1024 * sizeof(uint32_t));
-	rlwe_memset_volatile(tmp2, 0, 1024 * sizeof(uint32_t));
-	return 1;
-}
-
+/*
+void hash_session_key(uint32_t k[1024], uint32_t s[1024]){
+	EVP_MD_CTX *mdctx;
+	if((mdctx = EVP_MD_CTX_new()) == NULL){
+		handleErrors();}
+	if(1 != EVP_DigestInit_ex(mdctx, EVP_sha3_512(), NULL)){
+		handleErrors();}
+	if(1 != EVP_DigestUpdate(mdctx, s, 1024)){
+		handleErrors();}
+	if((k = (unsigned char *)OPENSSL_malloc(EVP_MD_size(EVP_sha3_512()))) == NULL){
+		handleErrors();}
+	if(1 != EVP_DigestFinal_ex(mdctx, k, 1024)){
+		handleErrors();}
+	EVP_MD_CTX_free(mdctx);
+}*/
 
 
 int main(){
@@ -319,11 +276,13 @@ int main(){
 	uint32_t s_alice[1024]; // n=1024
 	uint32_t s_bob[1024];
 	uint32_t s_eve[1024];
+	uint32_t s_david[1024];
 	
 	uint64_t rec[16];
 	uint64_t k_alice[16];
 	uint64_t k_bob[16];
 	uint64_t k_eve[16];
+	uint64_t k_david[16];
 
 	FFT_CTX ctx;
 	if (!FFT_CTX_init(&ctx)) {
@@ -335,24 +294,28 @@ int main(){
 	calculate_pubkey(0, a, s_alice, &ctx); 
 	calculate_pubkey(1, a, s_bob, &ctx);
 	calculate_pubkey(2, a, s_eve, &ctx);
+	calculate_pubkey(3, a, s_david, &ctx);
 		
-	// rlwe_kex_compute_key_bob(pub_keys[0], s_bob, rec, k_bob, &ctx);
-	// rlwe_kex_compute_key_alice(pub_keys[1], s_alice, rec, k_alice, &ctx); // 여기까지는 제대로 계산 됨.
+	//rlwe_kex_compute_key_bob(pub_keys[1], s_eve, rec, k_eve, &ctx);
+	//rlwe_kex_compute_key_alice(pub_keys[2], s_bob, rec, k_bob, &ctx);  여기까지는 제대로 계산 됨.
 	
+	calculate_augmented_pubkey(0,4, s_alice, &ctx);
+	calculate_augmented_pubkey(1,4, s_bob, &ctx);
+	calculate_augmented_pubkey(2,4, s_eve, &ctx);
+	calculate_augmented_pubkey(3,4, s_david, &ctx);
 	
-	calculate_augmented_pubkey(0,s_alice, &ctx);
-	calculate_augmented_pubkey(1,s_bob, &ctx);
-	calculate_augmented_pubkey(2,s_eve, &ctx);
+	calculate_reconcile(4, s_david, rec, k_david, &ctx);
 	
-	calculate_reconcile(s_eve, rec, k_eve, &ctx);
-	calculate_session_key_alice(s_alice, rec, k_alice, &ctx);
-	calculate_session_key_bob(s_bob, rec, k_bob, &ctx);
+	calculate_session_key(0,4, s_alice, rec, k_alice, &ctx);
+	calculate_session_key(1,4, s_bob, rec, k_bob, &ctx);
+	calculate_session_key(2,4, s_eve, rec, k_eve, &ctx);
 
 	int keys_match = 1;
 	for (int i = 0; i < 16; i++) {
-		keys_match &= (k_eve[i] == k_alice[i]);
-		keys_match &= (k_bob[i] == k_alice[i]);
+		keys_match &= (k_alice[i] == k_bob[i]);
 		keys_match &= (k_eve[i] == k_bob[i]);
+		keys_match &= (k_eve[i] == k_alice[i]);
+		keys_match &= (k_eve[i] == k_david[i]);
 	}
 	
 	
@@ -364,6 +327,7 @@ int main(){
 		return -1;
 	}
 
+	
 	FFT_CTX_clear(&ctx);
 	FFT_CTX_free(&ctx);
 	
