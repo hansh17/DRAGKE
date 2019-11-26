@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <openssl/evp.h>
 
 #include "../rlwe.h"
 #include "../fft.h"
@@ -192,7 +193,7 @@ int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], uint64
 	rlwe_round2(k, result);
 #endif	
 	// SHA-3 hash_session_key(uint32_t sk[1024], uint32_t result[1024])
-	
+
 	rlwe_memset_volatile(result, 0, 1024 * sizeof(uint32_t));
 	rlwe_memset_volatile(e, 0, 1024 * sizeof(uint32_t));
 	rlwe_memset_volatile(Y, 0, 1024 * 10 * sizeof(uint32_t));
@@ -245,8 +246,6 @@ int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec
 	rlwe_rec(k, result, rec);
 #endif
 
-	// SHA-3 hash_session_key(uint32_t sk[1024], uint32_t result[1024])
-
 	rlwe_memset_volatile(result, 0, 1024 * sizeof(uint32_t));
 	rlwe_memset_volatile(Y, 0, 1024 * 10 * sizeof(uint32_t));
 	rlwe_memset_volatile(tmp, 0, 1024 * sizeof(uint32_t));
@@ -255,18 +254,29 @@ int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec
 }
 
 /*
-void hash_session_key(uint32_t k[1024], uint32_t s[1024]){
+void hash_session_key(const unsigned char *message, size_t message_len, unsigned char *digest)
+{
+
 	EVP_MD_CTX *mdctx;
-	if((mdctx = EVP_MD_CTX_new()) == NULL){
-		handleErrors();}
+	
+	if((mdctx = EVP_MD_CTX_create()) == NULL){
+		return;}
+	
 	if(1 != EVP_DigestInit_ex(mdctx, EVP_sha3_512(), NULL)){
-		handleErrors();}
-	if(1 != EVP_DigestUpdate(mdctx, s, 1024)){
-		handleErrors();}
-	if((k = (unsigned char *)OPENSSL_malloc(EVP_MD_size(EVP_sha3_512()))) == NULL){
-		handleErrors();}
-	if(1 != EVP_DigestFinal_ex(mdctx, k, 1024)){
-		handleErrors();}
+		return;}
+
+	if(1 != EVP_DigestUpdate(mdctx, message, message_len)){
+		return;}
+
+	unsigned int digest_len;
+	digest_len = EVP_MD_size(EVP_sha3_512());
+
+	if((digest = (unsigned char *)OPENSSL_malloc(digest_len)) == NULL){
+		return;}
+
+	if(1 != EVP_DigestFinal_ex(mdctx, digest, &digest_len)){
+		return;}
+		
 	EVP_MD_CTX_free(mdctx);
 }*/
 
@@ -317,7 +327,6 @@ int main(){
 		keys_match &= (k_eve[i] == k_alice[i]);
 		keys_match &= (k_eve[i] == k_david[i]);
 	}
-	
 	
 	if (keys_match) {
 		printf("Keys match.\n");
