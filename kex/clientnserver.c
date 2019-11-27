@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <openssl/evp.h>
+#include <openssl/sha.h>
 
 #include "../rlwe.h"
 #include "../fft.h"
@@ -128,7 +129,7 @@ int calculate_augmented_pubkey(int peer, int num_peer, uint32_t s[1024],  FFT_CT
 	return ret;
 }
 
-int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_CTX *ctx){
+int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], char hk[128], FFT_CTX *ctx){
 	int ret;
 	uint32_t e[1024];
 	RAND_CTX rand_ctx;
@@ -185,6 +186,8 @@ int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], uint64
         FFT_add(result, result, tmp); 
     }
 
+	uint64_t k[16];
+
 #if CONSTANT_TIME // reconcile message b -> rec, k_n-1 is calculated
 	rlwe_crossround2_ct(rec, result, &rand_ctx);
 	rlwe_round2_ct(k, result);
@@ -192,7 +195,7 @@ int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], uint64
 	rlwe_crossround2(rec, result, &rand_ctx);
 	rlwe_round2(k, result);
 #endif	
-	// SHA-3 hash_session_key(uint32_t sk[1024], uint32_t result[1024])
+	sha512_session_key(k, hk);
 
 	rlwe_memset_volatile(result, 0, 1024 * sizeof(uint32_t));
 	rlwe_memset_volatile(e, 0, 1024 * sizeof(uint32_t));
@@ -203,7 +206,7 @@ int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], uint64
 	return ret;
 }
 
-int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_CTX *ctx){
+int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec[16], char hk[128], FFT_CTX *ctx){
 		
 	uint32_t Y[MAX_PEER][POLY_LEN];
 	uint32_t tmp[1024];
@@ -238,13 +241,15 @@ int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec
 		}
         FFT_add(result, result, tmp);
     }
-
+	uint64_t k[16];
 
 #if CONSTANT_TIME
 	rlwe_rec_ct(k, result, rec);
 #else
 	rlwe_rec(k, result, rec);
 #endif
+
+	sha512_session_key(k, hk);
 
 	rlwe_memset_volatile(result, 0, 1024 * sizeof(uint32_t));
 	rlwe_memset_volatile(Y, 0, 1024 * 10 * sizeof(uint32_t));
@@ -253,32 +258,20 @@ int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec
 	return 1;
 }
 
-/*
-void hash_session_key(const unsigned char *message, size_t message_len, unsigned char *digest)
+void sha512_session_key(uint64_t *in, char outputBuffer[128])
 {
-
-	EVP_MD_CTX *mdctx;
-	
-	if((mdctx = EVP_MD_CTX_create()) == NULL){
-		return;}
-	
-	if(1 != EVP_DigestInit_ex(mdctx, EVP_sha3_512(), NULL)){
-		return;}
-
-	if(1 != EVP_DigestUpdate(mdctx, message, message_len)){
-		return;}
-
-	unsigned int digest_len;
-	digest_len = EVP_MD_size(EVP_sha3_512());
-
-	if((digest = (unsigned char *)OPENSSL_malloc(digest_len)) == NULL){
-		return;}
-
-	if(1 != EVP_DigestFinal_ex(mdctx, digest, &digest_len)){
-		return;}
-		
-	EVP_MD_CTX_free(mdctx);
-}*/
+    unsigned char hash[SHA512_DIGEST_LENGTH]; // 64
+    SHA512_CTX sha512;
+    SHA512_Init(&sha512);
+    SHA512_Update(&sha512, in, 8*16);
+    SHA512_Final(hash, &sha512);
+    int i = 0;
+    for(i = 0; i < SHA512_DIGEST_LENGTH; i++)
+    {
+        sprintf(outputBuffer + (i * 2), "%02x", hash[i]);
+    }
+    outputBuffer[128] = 0;
+}
 
 
 int main(){
@@ -289,10 +282,10 @@ int main(){
 	uint32_t s_david[1024];
 	
 	uint64_t rec[16];
-	uint64_t k_alice[16];
-	uint64_t k_bob[16];
-	uint64_t k_eve[16];
-	uint64_t k_david[16];
+	uint64_t k_alice[128];
+	uint64_t k_bob[128];
+	uint64_t k_eve[128];
+	uint64_t k_david[128];
 
 	FFT_CTX ctx;
 	if (!FFT_CTX_init(&ctx)) {
@@ -306,9 +299,6 @@ int main(){
 	calculate_pubkey(2, a, s_eve, &ctx);
 	calculate_pubkey(3, a, s_david, &ctx);
 		
-	//rlwe_kex_compute_key_bob(pub_keys[1], s_eve, rec, k_eve, &ctx);
-	//rlwe_kex_compute_key_alice(pub_keys[2], s_bob, rec, k_bob, &ctx);  여기까지는 제대로 계산 됨.
-	
 	calculate_augmented_pubkey(0,4, s_alice, &ctx);
 	calculate_augmented_pubkey(1,4, s_bob, &ctx);
 	calculate_augmented_pubkey(2,4, s_eve, &ctx);
@@ -321,7 +311,7 @@ int main(){
 	calculate_session_key(2,4, s_eve, rec, k_eve, &ctx);
 
 	int keys_match = 1;
-	for (int i = 0; i < 16; i++) {
+	for (int i = 0; i < 128; i++) {
 		keys_match &= (k_alice[i] == k_bob[i]);
 		keys_match &= (k_eve[i] == k_bob[i]);
 		keys_match &= (k_eve[i] == k_alice[i]);

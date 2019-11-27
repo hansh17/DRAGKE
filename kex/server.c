@@ -127,7 +127,7 @@ int calculate_augmented_pubkey(int peer, int num_peer, uint32_t s[1024],  FFT_CT
 	return ret;
 }
 
-int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_CTX *ctx){
+int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], char hk[128], FFT_CTX *ctx){
 	int ret;
 	uint32_t e[1024];
 	RAND_CTX rand_ctx;
@@ -184,6 +184,8 @@ int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], uint64
         FFT_add(result, result, tmp); 
     }
 
+	uint64_t k[16];
+
 #if CONSTANT_TIME // reconcile message b -> rec, k_n-1 is calculated
 	rlwe_crossround2_ct(rec, result, &rand_ctx);
 	rlwe_round2_ct(k, result);
@@ -191,8 +193,8 @@ int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], uint64
 	rlwe_crossround2(rec, result, &rand_ctx);
 	rlwe_round2(k, result);
 #endif	
-	// SHA-3 hash_session_key(uint32_t sk[1024], uint32_t result[1024])
-	
+	sha512_session_key(k, hk);
+
 	rlwe_memset_volatile(result, 0, 1024 * sizeof(uint32_t));
 	rlwe_memset_volatile(e, 0, 1024 * sizeof(uint32_t));
 	rlwe_memset_volatile(Y, 0, 1024 * 10 * sizeof(uint32_t));
@@ -202,19 +204,17 @@ int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], uint64
 	return ret;
 }
 
-
-/*
-void hash_session_key(uint32_t k[1024], uint32_t s[1024]){
-	EVP_MD_CTX *mdctx;
-	if((mdctx = EVP_MD_CTX_new()) == NULL){
-		handleErrors();}
-	if(1 != EVP_DigestInit_ex(mdctx, EVP_sha3_512(), NULL)){
-		handleErrors();}
-	if(1 != EVP_DigestUpdate(mdctx, s, 1024)){
-		handleErrors();}
-	if((k = (unsigned char *)OPENSSL_malloc(EVP_MD_size(EVP_sha3_512()))) == NULL){
-		handleErrors();}
-	if(1 != EVP_DigestFinal_ex(mdctx, k, 1024)){
-		handleErrors();}
-	EVP_MD_CTX_free(mdctx);
-}*/
+void sha512_session_key(uint64_t *in, char outputBuffer[128])
+{
+    unsigned char hash[SHA512_DIGEST_LENGTH]; // 64
+    SHA512_CTX sha512;
+    SHA512_Init(&sha512);
+    SHA512_Update(&sha512, in, 8*16);
+    SHA512_Final(hash, &sha512);
+    int i = 0;
+    for(i = 0; i < SHA512_DIGEST_LENGTH; i++)
+    {
+        sprintf(outputBuffer + (i * 2), "%02x", hash[i]);
+    }
+    outputBuffer[128] = 0;
+}
