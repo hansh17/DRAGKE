@@ -1,12 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <openssl/evp.h>
+#include <openssl/sha.h>
 
 #include "../rlwe.h"
 #include "../fft.h"
@@ -127,7 +130,22 @@ int calculate_augmented_pubkey(int peer, int num_peer, uint32_t s[1024],  FFT_CT
 	return ret;
 }
 
-int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec[16], char hk[128], FFT_CTX *ctx){
+void sha512_session_key(uint64_t *in, char outputBuffer[129])
+{
+    unsigned char hash[SHA512_DIGEST_LENGTH]; // 64
+    SHA512_CTX sha512;
+    SHA512_Init(&sha512);
+    SHA512_Update(&sha512, in, 8*16);
+    SHA512_Final(hash, &sha512);
+    int i = 0;
+    for(i = 0; i < SHA512_DIGEST_LENGTH; i++)
+    {
+        sprintf(outputBuffer + (i * 2), "%02x", hash[i]);
+    }
+    outputBuffer[128]=0;
+}
+
+int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], unsigned char hk[129], FFT_CTX *ctx){
 		
 	uint32_t Y[MAX_PEER][POLY_LEN];
 	uint32_t tmp[1024];
@@ -162,7 +180,6 @@ int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec
 		}
         FFT_add(result, result, tmp);
     }
-	uint64_t k[16];
 
 #if CONSTANT_TIME
 	rlwe_rec_ct(k, result, rec);
@@ -178,20 +195,3 @@ int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec
 	rlwe_memset_volatile(tmp2, 0, 1024 * sizeof(uint32_t));
 	return 1;
 }
-
-void sha512_session_key(uint64_t *in, char outputBuffer[128])
-{
-    unsigned char hash[SHA512_DIGEST_LENGTH]; // 64
-    SHA512_CTX sha512;
-    SHA512_Init(&sha512);
-    SHA512_Update(&sha512, in, 8*16);
-    SHA512_Final(hash, &sha512);
-    int i = 0;
-    for(i = 0; i < SHA512_DIGEST_LENGTH; i++)
-    {
-        sprintf(outputBuffer + (i * 2), "%02x", hash[i]);
-    }
-    outputBuffer[128] = 0;
-}
-
-	

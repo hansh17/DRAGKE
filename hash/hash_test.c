@@ -16,7 +16,7 @@ void sha512_session_key(uint64_t *in, char outputBuffer[129])
     {
         sprintf(outputBuffer + (i * 2), "%02x", hash[i]);
     }
-    outputBuffer[129] = 0;
+    outputBuffer[128] = 0;
 }
 
 int main(){
@@ -42,7 +42,7 @@ int main(){
 		printf("%02x", buffer[i]);
 	}
 	printf("\n");
-	for(int i=0; i<129; i++){
+	for(int i=0; i<128; i++){
 		printf("%02x", buffer2[i]);
 	}
 	printf("\n");

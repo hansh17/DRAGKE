@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
@@ -129,7 +130,23 @@ int calculate_augmented_pubkey(int peer, int num_peer, uint32_t s[1024],  FFT_CT
 	return ret;
 }
 
-int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], char hk[128], FFT_CTX *ctx){
+void sha512_session_key(uint64_t *in, char outputBuffer[129])
+{
+    unsigned char hash[SHA512_DIGEST_LENGTH]; // 64
+    SHA512_CTX sha512;
+    SHA512_Init(&sha512);
+    SHA512_Update(&sha512, in, 8*16);
+    SHA512_Final(hash, &sha512);
+    int i = 0;
+    for(i = 0; i < SHA512_DIGEST_LENGTH; i++)
+    {
+        sprintf(outputBuffer + (i * 2), "%02x", hash[i]);
+    }
+    outputBuffer[128]=0;
+}
+
+
+int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], unsigned char hk[129], FFT_CTX *ctx){
 	int ret;
 	uint32_t e[1024];
 	RAND_CTX rand_ctx;
@@ -186,7 +203,7 @@ int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], char h
         FFT_add(result, result, tmp); 
     }
 
-	uint64_t k[16];
+	
 
 #if CONSTANT_TIME // reconcile message b -> rec, k_n-1 is calculated
 	rlwe_crossround2_ct(rec, result, &rand_ctx);
@@ -195,6 +212,7 @@ int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], char h
 	rlwe_crossround2(rec, result, &rand_ctx);
 	rlwe_round2(k, result);
 #endif	
+	
 	sha512_session_key(k, hk);
 
 	rlwe_memset_volatile(result, 0, 1024 * sizeof(uint32_t));
@@ -206,7 +224,7 @@ int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], char h
 	return ret;
 }
 
-int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec[16], char hk[128], FFT_CTX *ctx){
+int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], unsigned char hk[129], FFT_CTX *ctx){
 		
 	uint32_t Y[MAX_PEER][POLY_LEN];
 	uint32_t tmp[1024];
@@ -241,7 +259,6 @@ int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec
 		}
         FFT_add(result, result, tmp);
     }
-	uint64_t k[16];
 
 #if CONSTANT_TIME
 	rlwe_rec_ct(k, result, rec);
@@ -258,22 +275,6 @@ int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec
 	return 1;
 }
 
-void sha512_session_key(uint64_t *in, char outputBuffer[128])
-{
-    unsigned char hash[SHA512_DIGEST_LENGTH]; // 64
-    SHA512_CTX sha512;
-    SHA512_Init(&sha512);
-    SHA512_Update(&sha512, in, 8*16);
-    SHA512_Final(hash, &sha512);
-    int i = 0;
-    for(i = 0; i < SHA512_DIGEST_LENGTH; i++)
-    {
-        sprintf(outputBuffer + (i * 2), "%02x", hash[i]);
-    }
-    outputBuffer[128] = 0;
-}
-
-
 int main(){
 	uint32_t *a = rlwe_a; // 'a' is a predefined public rlwe instance
 	uint32_t s_alice[1024]; // n=1024
@@ -282,10 +283,15 @@ int main(){
 	uint32_t s_david[1024];
 	
 	uint64_t rec[16];
-	uint64_t k_alice[128];
-	uint64_t k_bob[128];
-	uint64_t k_eve[128];
-	uint64_t k_david[128];
+	
+	uint64_t k_alice[16];
+	uint64_t k_bob[16];
+	uint64_t k_eve[16];
+	uint64_t k_david[16];
+	static unsigned char hk_alice[129];
+	static unsigned char hk_bob[129];
+	static unsigned char hk_eve[129];
+	static unsigned char hk_david[129];
 
 	FFT_CTX ctx;
 	if (!FFT_CTX_init(&ctx)) {
@@ -304,14 +310,14 @@ int main(){
 	calculate_augmented_pubkey(2,4, s_eve, &ctx);
 	calculate_augmented_pubkey(3,4, s_david, &ctx);
 	
-	calculate_reconcile(4, s_david, rec, k_david, &ctx);
+	calculate_reconcile(4, s_david, rec, k_david, hk_david, &ctx);
 	
-	calculate_session_key(0,4, s_alice, rec, k_alice, &ctx);
-	calculate_session_key(1,4, s_bob, rec, k_bob, &ctx);
-	calculate_session_key(2,4, s_eve, rec, k_eve, &ctx);
+	calculate_session_key(0,4, s_alice, rec, k_alice, hk_alice, &ctx);
+	calculate_session_key(1,4, s_bob, rec, k_bob, hk_bob, &ctx);
+	calculate_session_key(2,4, s_eve, rec, k_eve, hk_eve, &ctx);
 
 	int keys_match = 1;
-	for (int i = 0; i < 128; i++) {
+	for (int i = 0; i < 16; i++) {
 		keys_match &= (k_alice[i] == k_bob[i]);
 		keys_match &= (k_eve[i] == k_bob[i]);
 		keys_match &= (k_eve[i] == k_alice[i]);
@@ -326,6 +332,40 @@ int main(){
 		return -1;
 	}
 
+
+	int hkeys_match = 1;
+	for (int i = 0; i < 129; i++) {
+		hkeys_match &= (hk_alice[i] == hk_bob[i]);
+		hkeys_match &= (hk_eve[i] == hk_bob[i]);
+		hkeys_match &= (hk_eve[i] == hk_alice[i]);
+		hkeys_match &= (hk_eve[i] == hk_david[i]);
+	}
+	
+	if (hkeys_match) {
+		printf("Hased Keys match.\n");
+	} else {
+		printf("Hased Keys don't match! :(\n");
+		for(int i=0; i<128; i++){
+			printf("%02x", hk_alice[i]);
+		}
+		printf("\n");
+		for(int i=0; i<128; i++){
+			printf("%02x", hk_bob[i]);
+		}
+		printf("\n");
+		for(int i=0; i<128; i++){
+			printf("%02x", hk_eve[i]);
+		}
+		printf("\n");				
+		for(int i=0; i<128; i++){
+			printf("%02x", hk_david[i]);
+		}
+		printf("\n");
+		int t = (hk_alice[0]==hk_eve[0]);
+		printf("%d\n", t);				
+		FFT_CTX_free(&ctx);
+		return -1;
+	}
 	
 	FFT_CTX_clear(&ctx);
 	FFT_CTX_free(&ctx);
