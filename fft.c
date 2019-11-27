@@ -233,6 +233,13 @@ void FFT_add(uint32_t *z, const uint32_t *x, const uint32_t *y) {
 	}
 }
 
+void FFT_sub(uint32_t *z, const uint32_t *x, const uint32_t *y) {
+	int i;
+	for (i = 0; i < 1024; i++) {
+		sub(z[i], x[i], y[i]);
+	}
+}
+
 int FFT_CTX_init(FFT_CTX *ctx) {
 	ctx->x1 = (uint32_t **) malloc(64 * sizeof(uint32_t *));
 	ctx->y1 = (uint32_t **) malloc(64 * sizeof(uint32_t *));

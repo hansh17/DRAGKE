@@ -27,6 +27,7 @@ void FFT_CTX_free(FFT_CTX *ctx);
 
 void FFT_mul(uint32_t *z, const uint32_t *x, const uint32_t *y, FFT_CTX *ctx);
 void FFT_add(uint32_t *z, const uint32_t *x, const uint32_t *y);
+void FFT_sub(uint32_t *z, const uint32_t *x, const uint32_t *y);
 
 #endif /* _FFT_H_ */
 
