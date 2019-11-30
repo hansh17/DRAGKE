@@ -261,8 +261,6 @@ int main(int argc, char *argv[])
     FFT_CTX ctx;
     FFT_CTX_init(&ctx);
     uint32_t sec_key[POLY_LEN];
-    calculate_pubkey(peer, rlwe_a, sec_key, &ctx);
-    //poly_init(peer);
 
     int option_and_peer = (peer << 16) | option;
 
@@ -283,8 +281,11 @@ int main(int argc, char *argv[])
     {
         case 0:
         {
+            calculate_pubkey(peer, rlwe_a, sec_key, &ctx);
             send(client_socket, pub_keys[peer], sizeof(pub_keys[peer]), 0);
             send(client_socket, sec_key, sizeof(sec_key), 0);
+            for (int i = 0; i < 3; i++)
+                printf("%u %u\n", pub_keys[peer][i], sec_key[i]);
             break;
         }
         case 1:
@@ -334,7 +335,7 @@ int main(int argc, char *argv[])
         }
         default:
         {
-            printf("unkonwn option!\n");
+            printf("unknown option!\n");
             break;
         }
     }

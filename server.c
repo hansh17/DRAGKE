@@ -212,7 +212,7 @@ void run_server(int num_peer, int server_port)
 
             if (all_augmented_pub_keys)
             {
-                calculate_reconcile(num_peer, sec_keys[0], reconcile, session_keys[0], &ctx);
+                calculate_reconcile(num_peer, sec_keys[num_peer - 1], reconcile, session_keys[num_peer - 1], &ctx);
                 reconcile_calculated = true;
             }
         }
