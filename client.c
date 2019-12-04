@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <getopt.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,7 +25,6 @@ uint64_t session_keys[MAX_PEER][KEY_LEN];
 
 uint64_t reconcile[KEY_LEN];
 
-void poly_init(int peer);
 int calculate_pubkey(int peer, const uint32_t *a, uint32_t s[1024], FFT_CTX *ctx);
 int calculate_augmented_pubkey(int peer, int num_peer, uint32_t s[1024],  FFT_CTX *ctx);
 int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_CTX *ctx);
@@ -186,24 +186,6 @@ int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec
 	return 1;
 }
 
-void poly_init(int peer)
-{
-    if (peer < 0 || peer > MAX_PEER)
-    {
-        printf("peer range error!\n");
-        return;
-    }
-
-    RAND_CTX rand_ctx;
-    RAND_CHOICE_init(&rand_ctx);
-#if CONSTANT_TIME
-    rlwe_sample_ct(pub_keys[peer], &rand_ctx);
-#else
-    rlwe_sample(pub_keys[peer], &rand_ctx);
-#endif
-    RAND_CHOICE_cleanup(&rand_ctx);
-}
-
 void calculate_pub_key_prime(uint32_t result[POLY_LEN], int peer, int num_peer)
 {
     memset(result, 0, sizeof(uint32_t) * POLY_LEN);
@@ -233,7 +215,7 @@ int main(int argc, char *argv[])
     int option = -1;
     int peer = -1;
 
-    int num_peer = 3;
+    int num_peer = 2;
     while ((op = getopt(argc, argv, "h:p:o:w:")) != -1)
     {
         switch (op)
@@ -252,17 +234,18 @@ int main(int argc, char *argv[])
                 break;
         }
     }
+    /*
     if (!(0 <= option && option <= 3))
     {
         printf("option shoud be 0 <= option <= 2!\n");
         exit(1);
     }
+    */
 
     FFT_CTX ctx;
     FFT_CTX_init(&ctx);
-    uint32_t sec_key[POLY_LEN];
 
-    int option_and_peer = (peer << 16) | option;
+    //int option_and_peer = (peer << 16) | option;
 
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family      = AF_INET;
@@ -275,68 +258,51 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    send(client_socket, &option_and_peer, sizeof(option_and_peer), 0);
-    
-    switch (option)
+    //send(client_socket, &option_and_peer, sizeof(option_and_peer), 0);
+    send(client_socket, &peer, sizeof(peer), 0);
+    while (true)
     {
-        case 0:
-        {
-            calculate_pubkey(peer, rlwe_a, sec_key, &ctx);
-            send(client_socket, pub_keys[peer], sizeof(pub_keys[peer]), 0);
-            send(client_socket, sec_key, sizeof(sec_key), 0);
-            for (int i = 0; i < 3; i++)
-                printf("%u %u\n", pub_keys[peer][i], sec_key[i]);
+        recv(client_socket, &option, sizeof(option), 0);
+
+        if (option > 3)
             break;
-        }
-        case 1:
+
+        switch (option)
         {
-            recv(client_socket, pub_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
-
-            recv(client_socket, sec_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
-
-            //uint32_t result[POLY_LEN];
-            calculate_augmented_pubkey(peer, num_peer, sec_keys[peer], &ctx);
-
-            send(client_socket, augmented_pub_keys[peer], sizeof(augmented_pub_keys[peer]), 0);
-            break;
-        }
-        case 2:
-        {
-            recv(client_socket, augmented_pub_keys, sizeof(augmented_pub_keys), 0);
-
-            for (int i = 0; i < num_peer; i++)
+            case 0:
             {
-                for (int j = 0; j < 3; j++)
-                    printf("%15u", augmented_pub_keys[i][j]);
-                printf("\n");
+                calculate_pubkey(peer, rlwe_a, sec_keys[peer], &ctx);
+                send(client_socket, pub_keys[peer], sizeof(pub_keys[peer]), 0);
+                break;
             }
-
-            break;
-        }
-        case 3:
-        {
-            recv(client_socket, reconcile, sizeof(reconcile), 0);
-            printf("Reconcile       ");
-            for (int i = 0; i < 3; i++)
+            case 1:
             {
-                printf("%15lu", reconcile[i]);
+                recv(client_socket, pub_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
+
+                calculate_augmented_pubkey(peer, num_peer, sec_keys[peer], &ctx);
+
+                send(client_socket, augmented_pub_keys[peer], sizeof(augmented_pub_keys[peer]), 0);
+                break;
             }
-            printf("\n");
-
-            recv(client_socket, sec_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
-
-            recv(client_socket, pub_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
-            recv(client_socket, augmented_pub_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
-
-            uint64_t result[KEY_LEN];
-            calculate_session_key(peer, num_peer, sec_keys[peer], reconcile, result, &ctx);
-            send(client_socket, result, sizeof(result), 0);
-            break;
-        }
-        default:
-        {
-            printf("unknown option!\n");
-            break;
+            case 2:
+            {
+                recv(client_socket, augmented_pub_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
+                break;
+            }
+            case 3:
+            {
+                recv(client_socket, reconcile, sizeof(reconcile), 0);
+                
+                uint64_t result[KEY_LEN];
+                calculate_session_key(peer, num_peer, sec_keys[peer], reconcile, result, &ctx);
+                send(client_socket, result, sizeof(result), 0);
+                break;
+            }
+            default:
+            {
+                printf("unknown option!\n");
+                break;
+            }
         }
     }
 

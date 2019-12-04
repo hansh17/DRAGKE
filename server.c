@@ -10,6 +10,7 @@
 
 #include "fft.h"
 #include "rlwe.h"
+#include "rlwe_a.h"
 #include "rlwe_rand.h"
 
 #define MAX_PEER 10
@@ -25,44 +26,117 @@ uint64_t session_keys[MAX_PEER][KEY_LEN];
 
 uint64_t reconcile[KEY_LEN];
 
-void poly_init(int num_peer);
-//void calculate_reconcile(void);
+int calculate_pubkey(int peer, const uint32_t *a, uint32_t s[1024], FFT_CTX *ctx);
+int calculate_augmented_pubkey(int peer, int num_peer, uint32_t s[1024],  FFT_CTX *ctx);
 int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_CTX *ctx);
 void run_server(int num_peer, int server_port);
 
-void poly_init(int num_peer)
-{
-    if (num_peer > MAX_PEER)
-    {
-        printf("Maximum peer number is %d\n", MAX_PEER);
-        return;
+int calculate_pubkey(int peer, const uint32_t *a, uint32_t s[1024], FFT_CTX *ctx) {
+	if (peer < 0 || peer > MAX_PEER){
+        printf("peer range error!\n");
+        return -1;
     }
+    
+	int ret;
+	uint32_t e[1024];
+	RAND_CTX rand_ctx;
+	ret = RAND_CHOICE_init(&rand_ctx);
+	if (!ret) {
+		return ret;
+	}
+#if CONSTANT_TIME
+	rlwe_sample_ct(s, &rand_ctx);
+	rlwe_sample_ct(e, &rand_ctx);
+#else
+	rlwe_sample(s, &rand_ctx);
+	rlwe_sample(e, &rand_ctx);
+#endif
+	
+	uint32_t tmp[1024];
+	rlwe_key_gen(tmp, a, s, e, ctx); // tmp에 as+e 저장
+	for(int t=0; t<1024; t++){
+		pub_keys[peer][t]=tmp[t];
+	}
+	rlwe_memset_volatile(e, 0, 1024 * sizeof(uint32_t));
+	rlwe_memset_volatile(tmp, 0, 1024 * sizeof(uint32_t));
+	RAND_CHOICE_cleanup(&rand_ctx);
+	return ret;
+}
 
-    RAND_CTX rand_ctx;
-    for (int i = 0; i < num_peer; i++)
-    {
-        RAND_CHOICE_init(&rand_ctx);
+int calculate_augmented_pubkey(int peer, int num_peer, uint32_t s[1024],  FFT_CTX *ctx){ 
+	int ret;
+	uint32_t e[1024];
+	RAND_CTX rand_ctx;
+	ret = RAND_CHOICE_init(&rand_ctx);
+	if (!ret) {
+		return ret;
+	}
+
+	uint32_t result[1024]={0,};
+	uint32_t tmp1[1024];
+	uint32_t tmp2[1024];
+	
+	if (peer==num_peer-1){	// peer N-1
 #if CONSTANT_TIME
-        rlwe_sample_ct(pub_keys[i], &rand_ctx);
+		rlwe_sample_ct(e, &rand_ctx);
 #else
-        rlwe_sample(pub_keys[i], &rand_ctx);
-#endif
-        RAND_CHOICE_cleanup(&rand_ctx);
-    }
-}
-/*
-void calculate_reconcile(void)
-{
-    RAND_CTX rand_ctx;
-    RAND_CHOICE_init(&rand_ctx);
+		rlwe_sample(e, &rand_ctx);		
+#endif	
+		for(int t=0; t<1024; t++){
+			tmp1[t]=pub_keys[0][t]; // tmp1=pub_keys[0];
+			tmp2[t]=pub_keys[peer-1][t]; // tmp2=pub_keys[peer-1];
+		}
+
+		FFT_sub(result, tmp1, tmp2); // z[0]-z[1]
+		FFT_mul(result, result, s, ctx); // res*s_eve
+		FFT_add(result, result, e);	
+	}
+	
+	else if (peer==0){ // peer 0
 #if CONSTANT_TIME
-    rlwe_sample_ct(reconcile, &rand_ctx);
+		rlwe_sample_ct(e, &rand_ctx); // sample from sigma2
 #else
-    rlwe_sample(reconcile, &rand_ctx);
-#endif
-    RAND_CHOICE_cleanup(&rand_ctx);
+		rlwe_sample(e, &rand_ctx); // sample from sigma2
+#endif	
+		for(int t=0; t<1024; t++){
+			tmp1[t]=pub_keys[peer+1][t]; // peer=0인 경우 pub_keys[1]
+			tmp2[t]=pub_keys[num_peer-1][t]; // pub_keys[N-1]
+		}
+		
+		FFT_sub(result, tmp1, tmp2); // z[1]-z[2]
+		FFT_mul(result, result, s, ctx); // res*s_alice
+		FFT_add(result, result, e);
+	}
+	
+	else{ // other peers
+#if CONSTANT_TIME
+		rlwe_sample_ct(e, &rand_ctx);
+#else
+		rlwe_sample(e, &rand_ctx);
+#endif	
+
+		for(int t=0; t<1024; t++){
+			tmp1[t]=pub_keys[peer+1][t];
+			tmp2[t]=pub_keys[peer-1][t];
+		}		
+		
+		FFT_sub(result, tmp1, tmp2); // res=z[2] - z[0]
+		FFT_mul(result, result, s, ctx); // res= res* s_bob
+		FFT_add(result, result, e); // res= res+e
+	}
+	
+	for(int t=0; t<1024; t++){
+		augmented_pub_keys[peer][t]=result[t]; // X[i] save
+	}
+	
+	rlwe_memset_volatile(result, 0, 1024 * sizeof(uint32_t));
+	rlwe_memset_volatile(tmp1, 0, 1024 * sizeof(uint32_t));
+	rlwe_memset_volatile(tmp2, 0, 1024 * sizeof(uint32_t));
+	rlwe_memset_volatile(e, 0, 1024 * sizeof(uint32_t));
+	RAND_CHOICE_cleanup(&rand_ctx);
+	return ret;
 }
-*/
+
 int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_CTX *ctx){
 	int ret;
 	uint32_t e[1024];
@@ -172,24 +246,25 @@ void run_server(int num_peer, int server_port)
     socklen_t client_addr_size;
     
     uint32_t result[POLY_LEN];
-    int option_and_peer;
+    int peer;
 
     memset(check_augmented_pub_keys, false, sizeof(check_augmented_pub_keys));
     bool reconcile_calculated = false;
 
     FFT_CTX ctx;
     FFT_CTX_init(&ctx);
-    
+
+    calculate_pubkey(num_peer - 1, rlwe_a, sec_keys[num_peer - 1], &ctx);
+
+    client_addr_size = sizeof(client_addr);
+    client_socket    = accept(server_socket, (struct sockaddr *)&client_addr,
+                              &client_addr_size);
+
+    recv(client_socket, &peer, sizeof(peer), 0);
+
+    int option = 0;
     while (true)
     {
-        client_addr_size = sizeof(client_addr);
-        client_socket    = accept(server_socket, (struct sockaddr *)&client_addr,
-                                  &client_addr_size);
-
-        printf("connection success!\n");
-
-        recv(client_socket, &option_and_peer, sizeof(option_and_peer), 0);
-        int peer = option_and_peer >> 16;
         if (!(0 <= peer && peer < num_peer))
         {
             printf("peer number error\n");
@@ -217,48 +292,54 @@ void run_server(int num_peer, int server_port)
             }
         }
 
-        switch (option_and_peer & 0xffff)
+        send(client_socket, &option, sizeof(option), 0);
+
+        if (option == 1)
+        {
+            calculate_augmented_pubkey(num_peer - 1, num_peer, sec_keys[num_peer - 1], &ctx);
+            check_augmented_pub_keys[num_peer - 1] = true;
+        }
+
+        switch (option)
         {
             case 0:
             {
                 recv(client_socket, pub_keys[peer], POLY_LEN * sizeof(uint32_t), 0);
-                recv(client_socket, sec_keys[peer], POLY_LEN * sizeof(uint32_t), 0);
+                printf("option 0 clear!\n");
                 break;
             }
             case 1:
             {
                 send(client_socket, pub_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
-                send(client_socket, sec_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
                 recv(client_socket, result, sizeof(result), 0);
                 memcpy(augmented_pub_keys[peer], result, sizeof(augmented_pub_keys[peer]));
                 check_augmented_pub_keys[peer] = true;
-                printf("got new public key fine!!!\n");
+                printf("option 1 clear!\n");
                 break;
             }
             case 2:
             {
                 send(client_socket, augmented_pub_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
+                printf("option 2 clear!\n");
                 break;
             }
             case 3:
             {
                 send(client_socket, reconcile, sizeof(reconcile), 0);
-                printf("Reconcile       ");
-                for (int i = 0; i < 3; i++)
-                {
-                    printf("%15lu", reconcile[i]);
-                }
-                printf("\n\n");
-
-                send(client_socket, sec_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
-
-                send(client_socket, pub_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
-                send(client_socket, augmented_pub_keys, sizeof(uint64_t) * num_peer * POLY_LEN, 0);
 
                 recv(client_socket, session_keys[peer], sizeof(session_keys[peer]), 0);
+                printf("option 3 clear!\n");
+                for (int i = 0; i < num_peer; i++)
+                {
+                    printf("Session key   %d", i);
+                    for (int j = 0; j < 3; j++)
+                        printf("%30lu", session_keys[i][j]);
+                    printf("\n");
+                }
                 break;
             }
         }
+        /*
         for (int i = 0; i < num_peer; i++)
         {
             printf("Sec key       %d", i);
@@ -290,15 +371,15 @@ void run_server(int num_peer, int server_port)
                 printf("%30lu", session_keys[i][j]);
             printf("\n");
         }
-
-        close(client_socket);
+        */
+        option++;
     }
+    close(client_socket);
 }
 
 int main(int argc, char *argv[])
 {
-    int num_peer = 3;
-    //poly_init(num_peer);
+    int num_peer = 2;
 
     int server_port = 4000;
     char op;
