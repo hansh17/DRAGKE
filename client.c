@@ -215,7 +215,7 @@ int main(int argc, char *argv[])
     int option = -1;
     int peer = -1;
 
-    int num_peer = 2;
+    int num_peer = 5;
     while ((op = getopt(argc, argv, "h:p:o:w:")) != -1)
     {
         switch (op)
@@ -259,9 +259,9 @@ int main(int argc, char *argv[])
     }
 
     //send(client_socket, &option_and_peer, sizeof(option_and_peer), 0);
-    send(client_socket, &peer, sizeof(peer), 0);
     while (true)
     {
+        send(client_socket, &peer, sizeof(peer), 0);
         recv(client_socket, &option, sizeof(option), 0);
 
         if (option > 3)
@@ -292,10 +292,14 @@ int main(int argc, char *argv[])
             case 3:
             {
                 recv(client_socket, reconcile, sizeof(reconcile), 0);
-                
+
                 uint64_t result[KEY_LEN];
                 calculate_session_key(peer, num_peer, sec_keys[peer], reconcile, result, &ctx);
                 send(client_socket, result, sizeof(result), 0);
+
+                for (int i = 0; i < 3; i++)
+                    printf("%30lu", result[i]);
+                printf("\n");
                 break;
             }
             default:

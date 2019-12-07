@@ -32,9 +32,10 @@ all:
 
 	$(CC) $(CCFLAGS) -o server fft.o rlwe.o rlwe_rand.o server.c $(LDFLAGS)
 	$(CC) $(CCFLAGS) -o client fft.o rlwe.o rlwe_rand.o client.c $(LDFLAGS)
+	$(CC) $(CCFLAGS) -o server_select fft.o rlwe.o rlwe_rand.o server_select.c $(LDFLAGS)
 
 clean:
-	rm fft.o rlwe.o rlwe_kex.o rlwe_rand.o rlwe_main rlwe_benchmark rlwe_test server client
+	rm fft.o rlwe.o rlwe_kex.o rlwe_rand.o rlwe_main rlwe_benchmark rlwe_test server client server_select
 
 test:
 	./rlwe_test

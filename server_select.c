@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -18,6 +19,8 @@
 #define KEY_LEN  16
 
 bool check_augmented_pub_keys[MAX_PEER];
+
+bool option_check[4][MAX_PEER];
 
 uint32_t sec_keys[MAX_PEER][POLY_LEN];
 uint32_t pub_keys[MAX_PEER][POLY_LEN];
@@ -212,6 +215,17 @@ int calculate_reconcile(int num_peer, uint32_t s[1024], uint64_t rec[16], uint64
 	return ret;
 }
 
+int next_option(int option, int num_peer)
+{
+    bool check = true;
+    for (int i = 0; i < num_peer - 1; i++)
+    {
+        check = check && option_check[option][i];
+    }
+    if (check)
+        return option + 1;
+    return option;
+}
 
 void run_server(int num_peer, int server_port)
 {
@@ -241,7 +255,7 @@ void run_server(int num_peer, int server_port)
         exit(1);
     }
 
-    int client_socket;
+    int new_socket;
     struct sockaddr_in client_addr;
     socklen_t client_addr_size;
     
@@ -249,6 +263,7 @@ void run_server(int num_peer, int server_port)
     int peer;
 
     memset(check_augmented_pub_keys, false, sizeof(check_augmented_pub_keys));
+    memset(option_check, false, sizeof(option_check));
     bool reconcile_calculated = false;
 
     FFT_CTX ctx;
@@ -256,133 +271,188 @@ void run_server(int num_peer, int server_port)
 
     calculate_pubkey(num_peer - 1, rlwe_a, sec_keys[num_peer - 1], &ctx);
 
-    client_addr_size = sizeof(client_addr);
-    client_socket    = accept(server_socket, (struct sockaddr *)&client_addr,
-                              &client_addr_size);
+    //client_addr_size = sizeof(client_addr);
+    //client_socket    = accept(server_socket, (struct sockaddr *)&client_addr,
+    //                          &client_addr_size);
 
-    recv(client_socket, &peer, sizeof(peer), 0);
+    //recv(client_socket, &peer, sizeof(peer), 0);
+
+    int client_socket[MAX_PEER];
+    for (int i = 0; i < num_peer; i++)
+    {
+        client_socket[i] = 0;
+    }
+
+    client_addr_size = sizeof(client_addr);
+
+    fd_set readfds;
+    int sd, max_sd;
+    int activity;
 
     int option = 0;
     while (true)
     {
-        if (!(0 <= peer && peer < num_peer))
+        FD_ZERO(&readfds);
+
+        FD_SET(server_socket, &readfds);
+        max_sd = server_socket;
+
+        for (int i = 0; i < num_peer; i++)
         {
-            printf("peer number error\n");
-            close(client_socket);
-            continue;
+            sd = client_socket[i];
+
+            if (sd > 0)
+                FD_SET(sd, &readfds);
+
+            if (sd > max_sd)
+                max_sd = sd;
         }
 
-        if (!reconcile_calculated)
+        activity = select(max_sd + 1, &readfds, NULL, NULL, NULL);
+
+        if (FD_ISSET(server_socket, &readfds))
         {
-            bool all_augmented_pub_keys = true;
+            new_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_size);
 
             for (int i = 0; i < num_peer; i++)
             {
-                if (!check_augmented_pub_keys[i])
+                if (client_socket[i] == 0)
                 {
-                    all_augmented_pub_keys = false;
+                    client_socket[i] = new_socket;
                     break;
                 }
             }
-
-            if (all_augmented_pub_keys)
-            {
-                calculate_reconcile(num_peer, sec_keys[num_peer - 1], reconcile, session_keys[num_peer - 1], &ctx);
-                reconcile_calculated = true;
-            }
         }
 
-        send(client_socket, &option, sizeof(option), 0);
-
-        if (option == 1)
+        for (int p = 0; p < num_peer; p++)
         {
-            calculate_augmented_pubkey(num_peer - 1, num_peer, sec_keys[num_peer - 1], &ctx);
-            check_augmented_pub_keys[num_peer - 1] = true;
-        }
+            sd = client_socket[p];
 
-        switch (option)
-        {
-            case 0:
+            if (FD_ISSET(sd, &readfds))
             {
-                recv(client_socket, pub_keys[peer], POLY_LEN * sizeof(uint32_t), 0);
-                printf("option 0 clear!\n");
-                break;
-            }
-            case 1:
-            {
-                send(client_socket, pub_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
-                recv(client_socket, result, sizeof(result), 0);
-                memcpy(augmented_pub_keys[peer], result, sizeof(augmented_pub_keys[peer]));
-                check_augmented_pub_keys[peer] = true;
-                printf("option 1 clear!\n");
-                break;
-            }
-            case 2:
-            {
-                send(client_socket, augmented_pub_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
-                printf("option 2 clear!\n");
-                break;
-            }
-            case 3:
-            {
-                send(client_socket, reconcile, sizeof(reconcile), 0);
+                recv(sd, &peer, sizeof(peer), 0);
 
-                recv(client_socket, session_keys[peer], sizeof(session_keys[peer]), 0);
-                printf("option 3 clear!\n");
-                /*for (int i = 0; i < num_peer; i++)
+                if (!(0 <= peer && peer < num_peer))
+                {
+                    printf("peer number error\n");
+                    close(sd);
+                    continue;
+                }
+
+                if (!reconcile_calculated)
+                {
+                    bool all_augmented_pub_keys = true;
+
+                    for (int i = 0; i < num_peer; i++)
+                    {
+                        if (!check_augmented_pub_keys[i])
+                        {
+                            all_augmented_pub_keys = false;
+                            break;
+                        }
+                    }
+
+                    if (all_augmented_pub_keys)
+                    {
+                        calculate_reconcile(num_peer, sec_keys[num_peer - 1], reconcile, session_keys[num_peer - 1], &ctx);
+                        reconcile_calculated = true;
+                    }
+                }
+
+                send(sd, &option, sizeof(option), 0);
+
+                if (option == 1)
+                {
+                    calculate_augmented_pubkey(num_peer - 1, num_peer, sec_keys[num_peer - 1], &ctx);
+                    check_augmented_pub_keys[num_peer - 1] = true;
+                }
+
+                switch (option)
+                {
+                    case 0:
+                    {
+                        recv(sd, pub_keys[peer], POLY_LEN * sizeof(uint32_t), 0);
+                        printf("option 0 clear with peer %d!\n", peer);
+                        break;
+                    }
+                    case 1:
+                    {
+                        send(sd, pub_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
+                        recv(sd, result, sizeof(result), 0);
+                        memcpy(augmented_pub_keys[peer], result, sizeof(augmented_pub_keys[peer]));
+                        check_augmented_pub_keys[peer] = true;
+                        printf("option 1 clear with peer %d!\n", peer);
+                        break;
+                    }
+                    case 2:
+                    {
+                        send(sd, augmented_pub_keys, sizeof(uint32_t) * num_peer * POLY_LEN, 0);
+                        printf("option 2 clear with peer %d!\n", peer);
+                        break;
+                    }
+                    case 3:
+                    {
+                        send(sd, reconcile, sizeof(reconcile), 0);
+
+                        recv(sd, session_keys[peer], sizeof(session_keys[peer]), 0);
+                        printf("option 3 clear with peer %d!\n", peer);
+                        /*for (int i = 0; i < num_peer; i++)
+                        {
+                            printf("Session key   %d", i);
+                            for (int j = 0; j < 3; j++)
+                                printf("%30lu", session_keys[i][j]);
+                            printf("\n");
+                        }*/
+                        for (int i = 0; i < 3; i++)
+                            printf("%30lu", session_keys[num_peer - 1][i]);
+                        printf("\n");
+                        break;
+                    }
+                }
+                /*
+                for (int i = 0; i < num_peer; i++)
+                {
+                    printf("Sec key       %d", i);
+                    for (int j = 0; j < 3; j++)
+                        printf("%15u", sec_keys[i][j]);
+                    printf("\n");
+                }
+                printf("\n");
+                for (int i = 0; i < num_peer; i++)
+                {
+                    printf("Pub key       %d", i);
+                    for (int j = 0; j < 3; j++)
+                        printf("%15u", pub_keys[i][j]);
+                    printf("\n");
+                }
+                printf("\n");
+                for (int i = 0; i < num_peer; i++)
+                {
+                    printf("Pub key prime %d", i);
+                    for (int j = 0; j < 3; j++)
+                        printf("%15u", augmented_pub_keys[i][j]);
+                    printf("\n");
+                }
+                printf("\n");
+                for (int i = 0; i < num_peer; i++)
                 {
                     printf("Session key   %d", i);
                     for (int j = 0; j < 3; j++)
                         printf("%30lu", session_keys[i][j]);
                     printf("\n");
-                }*/
-                for (int i = 0; i < 3; i++)
-                    printf("%30lu", session_keys[num_peer - 1][i]);
-                printf("\n");
-                break;
+                }
+                */
+                option_check[option][peer] = true;
+                option = next_option(option, num_peer);
             }
         }
-        /*
-        for (int i = 0; i < num_peer; i++)
-        {
-            printf("Sec key       %d", i);
-            for (int j = 0; j < 3; j++)
-                printf("%15u", sec_keys[i][j]);
-            printf("\n");
-        }
-        printf("\n");
-        for (int i = 0; i < num_peer; i++)
-        {
-            printf("Pub key       %d", i);
-            for (int j = 0; j < 3; j++)
-                printf("%15u", pub_keys[i][j]);
-            printf("\n");
-        }
-        printf("\n");
-        for (int i = 0; i < num_peer; i++)
-        {
-            printf("Pub key prime %d", i);
-            for (int j = 0; j < 3; j++)
-                printf("%15u", augmented_pub_keys[i][j]);
-            printf("\n");
-        }
-        printf("\n");
-        for (int i = 0; i < num_peer; i++)
-        {
-            printf("Session key   %d", i);
-            for (int j = 0; j < 3; j++)
-                printf("%30lu", session_keys[i][j]);
-            printf("\n");
-        }
-        */
-        option++;
     }
-    close(client_socket);
+    //close(client_socket);
 }
 
 int main(int argc, char *argv[])
 {
-    int num_peer = 2;
+    int num_peer = 5;
 
     int server_port = 4000;
     char op;
