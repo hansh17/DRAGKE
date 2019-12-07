@@ -17,6 +17,7 @@
 #include "rlwe_rand.h"
 
 #include "rlwe_table.h"
+#include "rlwe_table2.h"
 
 #define setbit(a,x) ((a)[(x)/64] |= (((uint64_t) 1) << (uint64_t) ((x)%64)))
 #define getbit(a,x) (((a)[(x)/64] >> (uint64_t) ((x)%64)) & 1)
@@ -129,6 +130,16 @@ static uint32_t single_sample(uint64_t *in) {
 	return i;
 }
 
+static uint32_t single_sample2(uint64_t *in) {
+	size_t i = 0;
+
+	while (cmplt_ct(rlwe_table2[i], in)) {
+		i++;
+	}
+
+	return i;
+}
+
 /* We assume that e contains two random bits in the two
  * least significant positions. */
 static uint64_t dbl(const uint32_t in, int32_t e) {
@@ -149,6 +160,15 @@ static uint32_t single_sample_ct(uint64_t *in) {
 	return index;
 }
 
+static uint32_t single_sample2_ct(uint64_t *in) {
+	uint32_t index = 0, i;
+	for (i = 0; i < 7274388; i++) {
+		index = ct_select_u64(index, i + 1, cmplt_ct(in, rlwe_table2[i]));
+	}
+	return index;
+}
+
+
 void rlwe_sample_ct(uint32_t *s, RAND_CTX *rand_ctx) {
 	int i, j;
 	for (i = 0; i < 16; i++) {
@@ -162,6 +182,25 @@ void rlwe_sample_ct(uint32_t *s, RAND_CTX *rand_ctx) {
 			r >>= 1;
 			// use the constant time version single_sample
 			s[i * 64 + j] = single_sample_ct(rnd);
+			t = (uint32_t) - s[i * 64 + j];
+			s[i * 64 + j] = ct_select_u64(t, s[i * 64 + j], ct_eq_u64(m, 0));
+		}
+	}
+}
+
+
+void rlwe_sample2_ct(uint32_t *s, RAND_CTX *rand_ctx) {
+	int i, j;
+	for (i = 0; i < 16; i++) {
+		uint64_t r = RANDOM64(rand_ctx);
+		for (j = 0; j < 64; j++) {
+			uint64_t rnd=RANDOM64(rand_ctx);
+			uint32_t m;
+			uint32_t t;
+			m = (r & 1);
+			r >>= 1;
+			// use the constant time version single_sample2
+			s[i * 64 + j] = single_sample2_ct(rnd);
 			t = (uint32_t) - s[i * 64 + j];
 			s[i * 64 + j] = ct_select_u64(t, s[i * 64 + j], ct_eq_u64(m, 0));
 		}
@@ -223,6 +262,23 @@ void rlwe_sample(uint32_t *s, RAND_CTX *rand_ctx) {
 			m = (r & 1);
 			r >>= 1;
 			s[i * 64 + j] = single_sample(rnd);
+			if (m) {
+				s[i * 64 + j] = (uint32_t) - s[i * 64 + j];
+			}
+		}
+	}
+}
+
+void rlwe_sample2(uint32_t *s, RAND_CTX *rand_ctx) {
+	int i, j;
+	for (i = 0; i < 16; i++) {
+		uint64_t r = RANDOM64(rand_ctx);
+		for (j = 0; j < 64; j++) {
+			uint64_t rnd=RANDOM64(rand_ctx);
+			int32_t m;
+			m = (r & 1);
+			r >>= 1;
+			s[i * 64 + j] = single_sample2(rnd);
 			if (m) {
 				s[i * 64 + j] = (uint32_t) - s[i * 64 + j];
 			}

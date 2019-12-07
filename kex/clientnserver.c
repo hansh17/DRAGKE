@@ -87,9 +87,9 @@ int calculate_augmented_pubkey(int peer, int num_peer, uint32_t s[1024],  FFT_CT
 	
 	else if (peer==0){ // peer 0
 #if CONSTANT_TIME
-		rlwe_sample_ct(e, &rand_ctx); // sample from sigma2
+		rlwe_sample2_ct(e, &rand_ctx); // sample from sigma2
 #else
-		rlwe_sample(e, &rand_ctx); // sample from sigma2
+		rlwe_sample2(e, &rand_ctx); // sample from sigma2
 #endif	
 		for(int t=0; t<1024; t++){
 			tmp1[t]=pub_keys[peer+1][t]; // peer=0인 경우 pub_keys[1]
