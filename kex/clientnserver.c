@@ -14,7 +14,7 @@
 #include "../rlwe.h"
 #include "../fft.h"
 #include "../rlwe_rand.h"
-#include "../rlwe_a.h"
+//#include "../rlwe_a.h"
 #include "../rlwe_kex.h"
 
 #define _CRT_SECURE_NO_WARNINGS
@@ -275,6 +275,7 @@ int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec
 	return 1;
 }
 
+/*
 int main(){
 	uint32_t *a = rlwe_a; // 'a' is a predefined public rlwe instance
 	uint32_t s_alice[1024]; // n=1024
@@ -372,6 +373,6 @@ int main(){
 	
 	return 0;
 }
-
+*/
 
 	

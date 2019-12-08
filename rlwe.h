@@ -18,11 +18,13 @@
 
 #ifdef CONSTANT_TIME
 void rlwe_sample_ct(uint32_t *s, RAND_CTX *rand_ctx);
+void rlwe_sample2_ct(uint32_t *s, RAND_CTX *rand_ctx);
 void rlwe_round2_ct(uint64_t *out, const uint32_t *in);
 void rlwe_crossround2_ct(uint64_t *out, const uint32_t *in, RAND_CTX *rand_ctx);
 void rlwe_rec_ct(uint64_t *out, const uint32_t *w, const uint64_t *b);
 #else
 void rlwe_sample(uint32_t *s, RAND_CTX *rand_ctx);
+void rlwe_sample2(uint32_t *s, RAND_CTX *rand_ctx);
 void rlwe_round2(uint64_t *out, const uint32_t *in);
 void rlwe_crossround2(uint64_t *out, const uint32_t *in, RAND_CTX *rand_ctx);
 void rlwe_rec(uint64_t *out, const uint32_t *w, const uint64_t *b);

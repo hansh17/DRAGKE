@@ -26,11 +26,13 @@ all:
 	$(CC) $(CCFLAGS) -Wno-unused-function -c ../fft.c
 	$(CC) $(CCFLAGS) -Wno-unused-function -c ../rlwe.c
 	$(CC) $(CCFLAGS) -Wno-unused-function -c ../rlwe_kex.c
+	$(CC) $(CCFLAGS) -Wno-unused-function -c clientnserver.c
 	$(CC) $(CCFLAGS) -Wno-unused-function -Wno-unused-parameter -c ../rlwe_rand.c
-	$(CC) $(CCFLAGS) -Wno-unused-function -o client clientnserver.c rlwe_kex.o fft.o rlwe.o rlwe_rand.o $(LDFLAGS)
+	# $(CC) $(CCFLAGS) -Wno-unused-function -o client clientnserver.c rlwe_kex.o fft.o rlwe.o rlwe_rand.o $(LDFLAGS)
+	$(CC) $(CCFLAGS) -o grlwe_benchmark grlwe_benchmark.c fft.o rlwe.o rlwe_kex.o rlwe_rand.o clientnserver.o $(LDFLAGS)
 
 clean:
-	rm fft.o rlwe.o rlwe_rand.o rlwe_kex.o client
+	rm fft.o rlwe.o rlwe_rand.o rlwe_kex.o clientnserver.o grlwe_benchmark
 
 test:
 	./test

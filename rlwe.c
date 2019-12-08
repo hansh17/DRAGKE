@@ -109,7 +109,7 @@ static uint64_t ct_select_u64(uint64_t x, uint64_t y, uint64_t bit) {
  * Where a and b are both 3-limb 64-bit integers.
  * This function runs in constant time.
  */
-static int cmplt_ct(uint64_t *a, uint64_t *b) {
+static int cmplt_ct(uint64_t *a, uint64_t *b) { // comparison for 192bit
 	uint64_t r = 0; /* result */
 	uint64_t m = 0; /* mask   */
 	int i;
@@ -130,10 +130,21 @@ static uint32_t single_sample(uint64_t *in) {
 	return i;
 }
 
+
+static int cmplt_ct2(uint64_t *a, uint64_t *b) { // comparison for 64-bit rng
+	uint64_t r = 0; /* result */
+	uint64_t m = 0; /* mask   */
+	int i;
+	r |= ct_lt_u64(a,b) & ~m;
+	m |= ct_mask_u64(ct_ne_u64(a,b)); /* stop when a[i] != b[i] */
+	
+	return r & 1;
+}
+
 static uint32_t single_sample2(uint64_t *in) {
 	size_t i = 0;
 
-	while (cmplt_ct(rlwe_table2[i], in)) {
+	while (cmplt_ct2(rlwe_table2[i], in)) {
 		i++;
 	}
 
@@ -162,7 +173,7 @@ static uint32_t single_sample_ct(uint64_t *in) {
 
 static uint32_t single_sample2_ct(uint64_t *in) {
 	uint32_t index = 0, i;
-	for (i = 0; i < 7274388; i++) {
+	for (i = 0; i < 100; i++) {
 		index = ct_select_u64(index, i + 1, cmplt_ct(in, rlwe_table2[i]));
 	}
 	return index;
@@ -268,6 +279,7 @@ void rlwe_sample(uint32_t *s, RAND_CTX *rand_ctx) {
 		}
 	}
 }
+
 
 void rlwe_sample2(uint32_t *s, RAND_CTX *rand_ctx) {
 	int i, j;
