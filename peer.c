@@ -28,12 +28,13 @@ uint32_t sec_keys[MAX_PEER][POLY_LEN];
 uint32_t pub_keys[MAX_PEER][POLY_LEN];
 uint32_t augmented_pub_keys[MAX_PEER][POLY_LEN];
 uint64_t session_keys[MAX_PEER][KEY_LEN];
+unsigned char hashed_keys[MAX_PEER][HASH_LEN];
 
 uint64_t reconcile[KEY_LEN];
 
 int calculate_pubkey(int peer, const uint32_t *a, uint32_t s[1024], FFT_CTX *ctx);
 int calculate_augmented_pubkey(int peer, int num_peer, uint32_t s[1024],  FFT_CTX *ctx);
-int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_CTX *ctx);
+int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], unsigned char hk[129], FFT_CTX *ctx);
 
 int calculate_pubkey(int peer, const uint32_t *a, uint32_t s[1024], FFT_CTX *ctx) {
 	if (peer < 0 || peer > MAX_PEER){
@@ -157,7 +158,7 @@ void sha512_session_key(uint64_t *in, char outputBuffer[129])
 }
 
 
-int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], FFT_CTX *ctx){
+int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec[16], uint64_t k[16], unsigned char hk[129], FFT_CTX *ctx){
 		
 	uint32_t Y[MAX_PEER][POLY_LEN];
 	uint32_t tmp[1024];
@@ -199,6 +200,7 @@ int calculate_session_key(int peer, int num_peer, uint32_t s[1024], uint64_t rec
 #else
 	rlwe_rec(k, result, rec);
 #endif
+	sha512_session_key(k, hk);
 
 	rlwe_memset_volatile(result, 0, 1024 * sizeof(uint32_t));
 	rlwe_memset_volatile(Y, 0, 1024 * 10 * sizeof(uint32_t));
@@ -303,11 +305,15 @@ int main(int argc, char *argv[])
                 recv(client_socket, reconcile, sizeof(reconcile), 0);
 
                 uint64_t result[KEY_LEN];
-                calculate_session_key(peer, num_peer, sec_keys[peer], reconcile, result, &ctx);
-                send(client_socket, result, sizeof(result), 0);
-
-                for (int i = 0; i < 3; i++)
+		unsigned char hashed_result[HASH_LEN];
+                calculate_session_key(peer, num_peer, sec_keys[peer], reconcile, result, hashed_result, &ctx);
+                //send(client_socket, result, sizeof(result), 0);
+		send(client_socket, hashed_result, sizeof(hashed_result), 0);
+                /*for (int i = 0; i < 3; i++)
                     printf("%30lu", result[i]);
+                printf("\n");*/
+		for (int i = 0; i < 129; i++)
+                    printf("%c", hashed_result[i]);
                 printf("\n");
                 break;
             }

@@ -29,11 +29,11 @@ all:
 	$(CC) $(CCFLAGS) -o rlwe_main rlwe_main.c fft.o rlwe.o rlwe_kex.o rlwe_rand.o $(LDFLAGS)
 	$(CC) $(CCFLAGS) -o rlwe_benchmark rlwe_benchmark.c fft.o rlwe.o rlwe_kex.o rlwe_rand.o $(LDFLAGS)
 	$(CC) $(CCFLAGS) -Wno-unused-function -o rlwe_test rlwe_test.c fft.o rlwe_kex.o rlwe_rand.o $(LDFLAGS)
-	$(CC) $(CCFLAGS) -o client fft.o rlwe.o rlwe_rand.o client.c $(LDFLAGS)
-	$(CC) $(CCFLAGS) -o server_select fft.o rlwe.o rlwe_rand.o server_select.c $(LDFLAGS)
+	$(CC) $(CCFLAGS) -o peer fft.o rlwe.o rlwe_rand.o peer.c $(LDFLAGS)
+	$(CC) $(CCFLAGS) -o arbiter fft.o rlwe.o rlwe_rand.o arbiter.c $(LDFLAGS)
 
 clean:
-	rm fft.o rlwe.o rlwe_kex.o rlwe_rand.o rlwe_main rlwe_benchmark rlwe_test client server_select
+	rm fft.o rlwe.o rlwe_kex.o rlwe_rand.o rlwe_main rlwe_benchmark rlwe_test peer arbiter
 
 test:
 	./rlwe_test
