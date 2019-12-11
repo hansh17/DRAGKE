@@ -312,7 +312,9 @@ void run_server(int num_peer, int server_port)
     int activity;
 
     int option = 0;
-    while (true)
+
+    bool first_process;
+    while (option < 4)
     {
         FD_ZERO(&readfds);
 
@@ -389,6 +391,12 @@ void run_server(int num_peer, int server_port)
                     check_augmented_pub_keys[num_peer - 1] = true;
                 }
 
+                first_process = !option_check[option][peer];
+                send(sd, &first_process, sizeof(first_process), 0);
+
+                if (!first_process)
+                    continue;
+
                 switch (option)
                 {
                     case 0:
@@ -417,7 +425,7 @@ void run_server(int num_peer, int server_port)
                         send(sd, reconcile, sizeof(reconcile), 0);
 
                         //recv(sd, session_keys[peer], sizeof(session_keys[peer]), 0);
-			recv(sd, hashed_keys[peer], sizeof(hashed_keys[peer]), 0);
+			            recv(sd, hashed_keys[peer], sizeof(hashed_keys[peer]), 0);
                         printf("option 3 clear with peer %d!\n", peer);
                         /*for (int i = 0; i < num_peer; i++)
                         {
@@ -430,10 +438,12 @@ void run_server(int num_peer, int server_port)
                             printf("%30lu", session_keys[num_peer - 1][i]);
                         printf("\n");
                         break;*/
+                        /*
                         for (int i = 0; i < 129; i++)
                             printf("%c", hashed_keys[num_peer - 1][i]);
                         printf("\n");
-                        break;			
+                        break;
+                        */			
                     }
                 }
                 /*
@@ -474,6 +484,10 @@ void run_server(int num_peer, int server_port)
             }
         }
     }
+    printf("Arbiter hased key : ");
+    for (int i = 0; i < 129; i++)
+        printf("%c", hashed_keys[num_peer - 1][i]);
+    printf("\n");
     //close(client_socket);
 }
 

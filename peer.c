@@ -226,6 +226,8 @@ int main(int argc, char *argv[])
     int option = -1;
     int peer = -1;
 
+    bool first_process;
+
     int num_peer = 5;
     while ((op = getopt(argc, argv, "h:p:o:w:")) != -1)
     {
@@ -275,6 +277,10 @@ int main(int argc, char *argv[])
         send(client_socket, &peer, sizeof(peer), 0);
         recv(client_socket, &option, sizeof(option), 0);
 
+        recv(client_socket, &first_process, sizeof(first_process), 0);
+        if (!first_process)
+            continue;
+
         if (option > 3)
             break;
 
@@ -305,14 +311,15 @@ int main(int argc, char *argv[])
                 recv(client_socket, reconcile, sizeof(reconcile), 0);
 
                 uint64_t result[KEY_LEN];
-		unsigned char hashed_result[HASH_LEN];
+		        unsigned char hashed_result[HASH_LEN];
                 calculate_session_key(peer, num_peer, sec_keys[peer], reconcile, result, hashed_result, &ctx);
                 //send(client_socket, result, sizeof(result), 0);
-		send(client_socket, hashed_result, sizeof(hashed_result), 0);
+		        send(client_socket, hashed_result, sizeof(hashed_result), 0);
                 /*for (int i = 0; i < 3; i++)
                     printf("%30lu", result[i]);
                 printf("\n");*/
-		for (int i = 0; i < 129; i++)
+                printf("Peer %d hased key : ", peer);
+		        for (int i = 0; i < 129; i++)
                     printf("%c", hashed_result[i]);
                 printf("\n");
                 break;
