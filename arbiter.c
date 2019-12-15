@@ -493,7 +493,7 @@ void run_server(int num_peer, int server_port)
 
 int main(int argc, char *argv[])
 {
-    int num_peer = 5;
+    int num_peer = 3;
 
     int server_port = 4000;
     char op;

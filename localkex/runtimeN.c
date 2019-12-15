@@ -13,15 +13,18 @@
 #include <inttypes.h>
 #include <sys/time.h>
 
-#include "rlwe_kex.h"
+#include "../rlwe_kex.h"
+#include "clientnserver.h"
+#include "../fft.h"
+#include "../rlwe.h"
+#include "../rlwe_a.h"
 
-#include "fft.h"
-#include "rlwe.h"
-#include "rlwe_a.h"
-
-#define ITERATIONS 100
+#define ITERATIONS 10000
 
 #if defined(__i386__)
+
+uint32_t pub_keys[10][1024];
+uint32_t augmented_pub_keys[10][1024];
 
 static __inline__ unsigned long long rdtsc(void) {
 	unsigned long long int x;
@@ -61,10 +64,9 @@ int main() {
 	struct timeval timeval_start, timeval_end;
 
 	uint32_t s[1024];
-	uint32_t e[1024];
-	uint32_t b[1024];
 	uint64_t k[16];
 	uint64_t c[16];
+	unsigned char hk[129];
 
 	FFT_CTX ctx;
 	if (!FFT_CTX_init(&ctx)) {
@@ -81,26 +83,26 @@ int main() {
 	printf("%-30s %15s %15s %15s\n", "Operation", "Iterations", "usec (avg)", "cycles (avg)");
 	printf("------------------------------------------------------------------------------\n");
 
-#ifdef CONSTANT_TIME
-	TIME_OPERATION(rlwe_sample_ct(s, &rand_ctx), "sample_ct", ITERATIONS / 50)
-	TIME_OPERATION(FFT_mul(b, rlwe_a, s, &ctx), "FFT_mul", ITERATIONS / 50)
-	rlwe_sample_ct(e, &rand_ctx);
-	TIME_OPERATION(FFT_add(b, b, e), "FFT_add", ITERATIONS)
-	TIME_OPERATION(rlwe_crossround2_ct(c, b, &rand_ctx), "crossround2_ct", ITERATIONS / 10)
-	TIME_OPERATION(rlwe_round2_ct(k, b), "round2_ct", ITERATIONS / 10)
-	TIME_OPERATION(rlwe_rec_ct(k, b, c), "rec_ct", ITERATIONS)
-#else
-	TIME_OPERATION(rlwe_sample(s, &rand_ctx), "sample", ITERATIONS / 50)
-	TIME_OPERATION(FFT_mul(b, rlwe_a, s, &ctx), "FFT_mul", ITERATIONS / 50)
-	rlwe_sample(e, &rand_ctx);
-	TIME_OPERATION(FFT_add(b, b, e), "FFT_add", ITERATIONS)
-	TIME_OPERATION(rlwe_crossround2(c, b, &rand_ctx), "crossround2", ITERATIONS / 10)
-	TIME_OPERATION(rlwe_round2(k, b), "round2", ITERATIONS / 10)
-	TIME_OPERATION(rlwe_rec(k, b, c), "rec", ITERATIONS)
-#endif
-	TIME_OPERATION(rlwe_kex_generate_keypair(rlwe_a, s, b, &ctx), "rlwe_kex_generate_keypair", ITERATIONS / 50)
-	TIME_OPERATION(rlwe_kex_compute_key_bob(b, s, c, k, &ctx), "rlwe_kex_compute_key_bob", ITERATIONS / 50)
-	TIME_OPERATION(rlwe_kex_compute_key_alice(b, s, c, k, &ctx), "rlwe_kex_compute_key_alice", ITERATIONS / 50)
+	TIME_OPERATION(calculate_pubkey(0, rlwe_a, s, &ctx), "calculate_pub_key", ITERATIONS / 50)
+	calculate_pubkey(1, rlwe_a, s, &ctx);
+	calculate_pubkey(2, rlwe_a, s, &ctx);
+	calculate_pubkey(3, rlwe_a, s, &ctx);
+	calculate_pubkey(4, rlwe_a, s, &ctx);
+	calculate_pubkey(5, rlwe_a, s, &ctx);
+	calculate_pubkey(6, rlwe_a, s, &ctx);
+	calculate_pubkey(7, rlwe_a, s, &ctx);
+
+	TIME_OPERATION(calculate_augmented_pubkey(0, 8, s,  &ctx), "calculate_augmented_pub_key0", ITERATIONS / 50)
+	calculate_augmented_pubkey(1, 8, s, &ctx);
+	calculate_augmented_pubkey(2, 8, s, &ctx);
+	calculate_augmented_pubkey(3, 8, s, &ctx);
+	calculate_augmented_pubkey(4, 8, s, &ctx);
+	calculate_augmented_pubkey(5, 8, s, &ctx);
+	calculate_augmented_pubkey(6, 8, s, &ctx);
+	calculate_augmented_pubkey(7, 8, s, &ctx);
+
+	TIME_OPERATION(calculate_reconcile(8, s, c, k, hk, &ctx), "calculate_reconcile", ITERATIONS / 50)
+	TIME_OPERATION(calculate_session_key(0, 8, s, c, k, hk, &ctx), "calculate_session_key", ITERATIONS / 50)
 
 	FFT_CTX_clear(&ctx);
 	FFT_CTX_free(&ctx);

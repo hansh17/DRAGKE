@@ -19,7 +19,7 @@ PRNG_LDFLAGS=-lcrypto
 PRNG_CCFLAGS=-I/usr/local/opt/openssl/include
 PRNG_LDFLAGS=-L/usr/local/opt/openssl/lib -lcrypto
 
-CCFLAGS=-O3 -Wall -Wextra -std=c99 -Wno-deprecated-declarations -D$(PRNG) $(PRNG_CCFLAGS) #-DCONSTANT_TIME
+CCFLAGS=-O3 -Wall -Wextra -std=c99 -Wno-deprecated-declarations -D$(PRNG) $(PRNG_CCFLAGS) -DCONSTANT_TIME
 LDFLAGS=$(PRNG_LDFLAGS)
 
 all:
@@ -30,9 +30,10 @@ all:
 	$(CC) $(CCFLAGS) -Wno-unused-function -Wno-unused-parameter -c ../rlwe_rand.c
 	# $(CC) $(CCFLAGS) -Wno-unused-function -o client clientnserver.c rlwe_kex.o fft.o rlwe.o rlwe_rand.o $(LDFLAGS)
 	$(CC) $(CCFLAGS) -o grlwe_benchmark grlwe_benchmark.c fft.o rlwe.o rlwe_kex.o rlwe_rand.o clientnserver.o $(LDFLAGS)
+	$(CC) $(CCFLAGS) -o runtimeN runtimeN.c fft.o rlwe.o rlwe_kex.o rlwe_rand.o clientnserver.o $(LDFLAGS)
 
 clean:
-	rm fft.o rlwe.o rlwe_rand.o rlwe_kex.o clientnserver.o grlwe_benchmark
+	rm fft.o rlwe.o rlwe_rand.o rlwe_kex.o clientnserver.o grlwe_benchmark runtimeN
 
 test:
 	./test

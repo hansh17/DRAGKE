@@ -173,8 +173,8 @@ static uint32_t single_sample_ct(uint64_t *in) {
 
 static uint32_t single_sample2_ct(uint64_t *in) {
 	uint32_t index = 0, i;
-	for (i = 0; i < 100; i++) {
-		index = ct_select_u64(index, i + 1, cmplt_ct(in, rlwe_table2[i]));
+	for (i = 0; i < 7707672; i++) {
+		index = ct_select_u64(index, i + 1, cmplt_ct2(in, rlwe_table2[i]));
 	}
 	return index;
 }
