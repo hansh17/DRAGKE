@@ -26,8 +26,8 @@ all:
 	$(CC) $(CCFLAGS) -Wno-unused-function -c rlwe.c
 	$(CC) $(CCFLAGS) -Wno-unused-function -c rlwe_kex.c
 	$(CC) $(CCFLAGS) -Wno-unused-function -Wno-unused-parameter -c rlwe_rand.c
-	$(CC) $(CCFLAGS) -o peer fft.o rlwe.o rlwe_rand.o peer.c $(LDFLAGS)
-	$(CC) $(CCFLAGS) -o arbiter fft.o rlwe.o rlwe_rand.o arbiter.c $(LDFLAGS)
+	$(CC) $(CCFLAGS) -o peer fft.o rlwe.o rlwe_rand.o peerS.c $(LDFLAGS)
+	$(CC) $(CCFLAGS) -o arbiter fft.o rlwe.o rlwe_rand.o arbiterS.c $(LDFLAGS)
 
 clean:
 	rm fft.o rlwe.o rlwe_kex.o rlwe_rand.o peer arbiter
