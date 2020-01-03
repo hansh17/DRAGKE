@@ -23,6 +23,8 @@
 #define getbit(a,x) (((a)[(x)/64] >> (uint64_t) ((x)%64)) & 1)
 #define clearbit(a,x) ((a)[(x)/64] &= ((~((uint64_t) 0)) - (((uint64_t) 1) << (uint64_t) ((x)%64))))
 
+#define TABLE2_SIZE 7707672
+
 /* Auxiliary functions for constant-time comparison */
 
 /*
@@ -142,13 +144,14 @@ static int cmplt_ct2(uint64_t *a, uint64_t *b) { // comparison for 64-bit rng
 }
 
 static uint32_t single_sample2(uint64_t *in) {
-	size_t i = 0;
-
-	while (cmplt_ct2(rlwe_table2[i], in)) {
-		i++;
+	int32_t imin = -1;
+	int32_t imax = TABLE2_SIZE;
+	while (imax-imin>1) {
+		int32_t ithis = (imin+imax)/2;
+		if (cmplt_ct2(rlwe_table2[ithis], in)) imin = ithis;
+		else imax = ithis;
 	}
-
-	return i;
+	return (uint32_t) imax;
 }
 
 /* We assume that e contains two random bits in the two
