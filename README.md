@@ -7,6 +7,12 @@ This software implements the key exchange protocol based on the ring learning wi
 
 This software was initially distributed by the authors from <https://github.com/dstebila/rlwekex>
 
+
+Notice
+------------
+The latest update is moved to https://github.com/hansh17/dynamic-RLWE-GKA (due to LFS)
+Please refer to the above repository.
+
 Instructions
 ------------
 The software is plain C (C99 standard).  Compilation has been tested using gcc on Linux and clang on Mac OS X.
